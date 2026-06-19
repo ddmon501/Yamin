@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#070A0D" />
+<title>Vigil — Driver Alertness Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
+<style>
+  :root{
+    --bg:#070A0D;
+    --panel:#0E141A;
+    --panel-2:#121A22;
+    --line:#1E2A34;
+    --ink:#E7F0F4;
+    --muted:#7C8C97;
+    --dim:#4A5862;
+    --awake:#2EE6C2;     /* phosphor teal */
+    --awake-deep:#0E6B5E;
+    --warn:#FFB23E;      /* amber */
+    --crit:#FF3B47;      /* red */
+    --crit-deep:#5A0F14;
+    --shadow:0 18px 50px rgba(0,0,0,.55);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:
+      radial-gradient(1200px 600px at 50% -10%, #0C151B 0%, var(--bg) 60%);
+    color:var(--ink);
+    font-family:"Space Grotesk",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  .wrap{max-width:760px;margin:0 auto;padding:18px 16px 40px;}
+
+  /* ---------- header ---------- */
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+  .brand{display:flex;align-items:center;gap:11px}
+  .logo{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);
+    background:linear-gradient(150deg,#10202A,#0A1116);display:grid;place-items:center;position:relative}
+  .logo::before{content:"";width:16px;height:9px;border-radius:0 0 16px 16px / 0 0 9px 9px;
+    border:2px solid var(--awake);border-top:none;box-shadow:0 0 10px rgba(46,230,194,.5)}
+  .logo::after{content:"";position:absolute;width:6px;height:6px;border-radius:50%;background:var(--awake);
+    box-shadow:0 0 8px var(--awake);top:11px}
+  .brand h1{font-size:16px;letter-spacing:.14em;font-weight:600;margin:0;text-transform:uppercase}
+  .brand small{display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--muted);letter-spacing:.22em;margin-top:2px}
+  .state-pill{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.16em;
+    padding:7px 12px;border-radius:999px;border:1px solid var(--line);color:var(--muted);
+    text-transform:uppercase;white-space:nowrap}
+  .state-pill.live{color:var(--awake);border-color:rgba(46,230,194,.4);box-shadow:0 0 0 1px rgba(46,230,194,.08) inset}
+
+  /* ---------- main gauge ---------- */
+  .stage{position:relative;border:1px solid var(--line);border-radius:22px;overflow:hidden;
+    background:linear-gradient(180deg,#0C131A,#090E13);box-shadow:var(--shadow);padding:26px 18px 18px}
+  .stage::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 80% at 50% 0%,transparent 60%,rgba(0,0,0,.45));}
+  .status-word{position:relative;text-align:center;font-size:13px;letter-spacing:.34em;
+    text-transform:uppercase;color:var(--muted);font-weight:500;margin-bottom:6px;z-index:2}
+
+  .eye-host{position:relative;width:100%;max-width:330px;margin:0 auto;aspect-ratio:1/1;z-index:2}
+  svg.eye{width:100%;height:100%;overflow:visible;display:block}
+  .ring-track{fill:none;stroke:var(--line);stroke-width:6}
+  .ring-prog{fill:none;stroke:var(--awake);stroke-width:6;stroke-linecap:round;
+    filter:drop-shadow(0 0 6px rgba(46,230,194,.55));transition:stroke .25s}
+  .eye-white{fill:#0A1217;stroke:var(--awake);stroke-width:3;transition:stroke .2s;
+    filter:drop-shadow(0 0 8px rgba(46,230,194,.25))}
+  .iris{transition:opacity .15s}
+  .lash{stroke:var(--awake);stroke-width:3;stroke-linecap:round;transition:stroke .2s;opacity:.85}
+
+  .readout{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:3}
+  .readout .big{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:46px;line-height:1;color:var(--ink)}
+  .readout .unit{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);letter-spacing:.2em;margin-top:4px}
+
+  .verdict{position:relative;text-align:center;margin-top:8px;z-index:2}
+  .verdict b{font-size:26px;letter-spacing:.18em;text-transform:uppercase;color:var(--awake);
+    text-shadow:0 0 18px rgba(46,230,194,.35)}
+  .verdict span{display:block;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);
+    letter-spacing:.1em;margin-top:4px;min-height:14px}
+
+  /* ---------- instrument row ---------- */
+  .gauges{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+  .gauge{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:11px 8px;text-align:center}
+  .gauge .k{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+  .gauge .v{font-family:"IBM Plex Mono",monospace;font-size:20px;font-weight:600;margin-top:5px;color:var(--ink)}
+  .gauge .v small{font-size:11px;color:var(--muted);font-weight:400}
+
+  /* ---------- camera ---------- */
+  .cam-card{margin-top:14px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#05080B;position:relative}
+  .cam-head{display:flex;align-items:center;justify-content:space-between;padding:9px 13px;border-bottom:1px solid var(--line)}
+  .cam-head .k{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase}
+  .rec{display:flex;align-items:center;gap:7px;font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--dim);letter-spacing:.12em}
+  .rec i{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+  .rec.on i{background:var(--crit);box-shadow:0 0 8px var(--crit);animation:blink 1.1s steps(2) infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .video-box{position:relative;width:100%;aspect-ratio:4/3;background:#05080B}
+  video,canvas.overlay{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  .cam-empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--dim);
+    font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.1em;padding:20px}
+
+  /* ---------- controls ---------- */
+  .controls{margin-top:16px;display:grid;gap:12px}
+  .row{display:flex;gap:10px}
+  button{font-family:"Space Grotesk",sans-serif;cursor:pointer;border:1px solid var(--line);
+    background:var(--panel-2);color:var(--ink);border-radius:13px;padding:14px 16px;font-size:14px;
+    letter-spacing:.04em;transition:.15s;flex:1}
+  button:hover{border-color:#2C3C48;background:#15202A}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.primary{background:linear-gradient(180deg,#1A6A5E,#0E5048);border-color:#1E8576;
+    color:#EAFFFB;font-weight:600;letter-spacing:.08em}
+  button.primary:hover{background:linear-gradient(180deg,#1F7D6E,#11665B)}
+  button.stop{background:linear-gradient(180deg,#6A1A22,#4E0F15);border-color:#8A2630;color:#FFEBED}
+  button.ghost{flex:0 0 auto;padding:14px 16px}
+
+  .setting{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:13px 15px}
+  .setting .lbl{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--ink)}
+  .setting .lbl .val{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--awake)}
+  .setting p{margin:3px 0 0;font-size:11px;color:var(--muted);line-height:1.4}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:5px;border-radius:5px;
+    background:var(--line);margin-top:12px;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--awake);cursor:pointer;box-shadow:0 0 10px rgba(46,230,194,.6);border:3px solid #07110F}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border:3px solid #07110F;border-radius:50%;
+    background:var(--awake);cursor:pointer}
+
+  .toggles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .toggle{display:flex;align-items:center;justify-content:space-between;background:var(--panel);
+    border:1px solid var(--line);border-radius:13px;padding:13px 15px;font-size:13px}
+  .switch{position:relative;width:44px;height:25px;border-radius:999px;background:var(--line);transition:.2s;flex:0 0 auto}
+  .switch::after{content:"";position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;background:#8295A0;transition:.2s}
+  .switch.on{background:var(--awake-deep)}
+  .switch.on::after{left:22px;background:var(--awake);box-shadow:0 0 8px var(--awake)}
+
+  .note{font-size:11px;color:var(--dim);line-height:1.55;border:1px solid var(--line);
+    border-radius:12px;padding:12px 14px;background:rgba(255,178,62,.03)}
+  .note b{color:var(--warn)}
+
+  /* ---------- alert overlay ---------- */
+  .alarm{position:fixed;inset:0;z-index:99;display:none;place-items:center;text-align:center;
+    background:radial-gradient(circle at 50% 50%,rgba(120,10,15,.86),rgba(40,2,4,.96));
+    animation:flash .5s steps(2) infinite}
+  .alarm.show{display:grid}
+  @keyframes flash{50%{background:radial-gradient(circle at 50% 50%,rgba(200,20,28,.92),rgba(70,3,6,.98))}}
+  .alarm .ico{font-size:64px}
+  .alarm h2{font-size:46px;letter-spacing:.2em;margin:6px 0 4px;text-shadow:0 0 30px rgba(255,40,50,.7)}
+  .alarm p{font-family:"IBM Plex Mono",monospace;letter-spacing:.18em;color:#FFD2D5;font-size:13px}
+  .alarm button{margin-top:26px;flex:0 0 auto;background:#fff;color:#5A0F14;border:none;font-weight:700;
+    font-size:16px;letter-spacing:.1em;padding:16px 40px;border-radius:14px}
+
+  .stage.warn .eye-white,.stage.warn .lash{stroke:var(--warn)}
+  .stage.warn .ring-prog{stroke:var(--warn);filter:drop-shadow(0 0 6px rgba(255,178,62,.6))}
+  .stage.crit .eye-white,.stage.crit .lash{stroke:var(--crit)}
+  .stage.crit .ring-prog{stroke:var(--crit);filter:drop-shadow(0 0 6px rgba(255,59,71,.7))}
+
+  @media (max-width:430px){
+    .readout .big{font-size:38px}
+    .verdict b{font-size:22px}
+    .gauge .v{font-size:18px}
+    .alarm h2{font-size:34px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .alarm,.rec.on i{animation:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <h1>Vigil</h1>
+        <small>DRIVER ALERTNESS</small>
+      </div>
+    </div>
+    <div class="state-pill" id="statePill">Standby</div>
+  </header>
+
+  <!-- main instrument -->
+  <section class="stage" id="stage">
+    <div class="status-word" id="statusWord">Eye openness</div>
+    <div class="eye-host">
+      <svg class="eye" viewBox="0 0 300 300" id="eyeSvg">
+        <circle class="ring-track" cx="150" cy="150" r="138"></circle>
+        <circle class="ring-prog" cx="150" cy="150" r="138" id="ringProg"
+          transform="rotate(-90 150 150)" stroke-dasharray="867" stroke-dashoffset="867"></circle>
+        <g id="eyeShape">
+          <path class="eye-white" id="eyeWhite" d=""></path>
+          <clipPath id="eyeClip"><path id="eyeClipPath" d=""></path></clipPath>
+          <g clip-path="url(#eyeClip)">
+            <circle class="iris" id="iris" cx="150" cy="150" r="34" fill="#0E2A28" stroke="#2EE6C2" stroke-width="3"></circle>
+            <circle id="pupil" cx="150" cy="150" r="13" fill="#04100E"></circle>
+            <circle cx="160" cy="140" r="6" fill="#BFFff0" opacity=".5"></circle>
+          </g>
+        </g>
+        <line class="lash" id="lashL" x1="40" y1="150" x2="22" y2="150"></line>
+        <line class="lash" id="lashR" x1="260" y1="150" x2="278" y2="150"></line>
+      </svg>
+      <div class="readout">
+        <div class="big" id="openPct">--</div>
+        <div class="unit">% OPEN</div>
+      </div>
+    </div>
+    <div class="verdict">
+      <b id="verdict">STANDBY</b>
+      <span id="subverdict">Tap Start monitoring to begin</span>
+    </div>
+  </section>
+
+  <!-- instruments -->
+  <div class="gauges">
+    <div class="gauge"><div class="k">EAR</div><div class="v" id="earVal">--</div></div>
+    <div class="gauge"><div class="k">Closed</div><div class="v" id="closedT">0.0<small>s</small></div></div>
+    <div class="gauge"><div class="k">PERCLOS</div><div class="v" id="perclos">--<small>%</small></div></div>
+    <div class="gauge"><div class="k">Blinks/min</div><div class="v" id="bpm">--</div></div>
+  </div>
+
+  <!-- camera -->
+  <div class="cam-card">
+    <div class="cam-head">
+      <span class="k">Front camera · eye tracking</span>
+      <span class="rec" id="rec"><i></i>OFFLINE</span>
+    </div>
+    <div class="video-box">
+      <video id="video" playsinline muted></video>
+      <canvas class="overlay" id="overlay"></canvas>
+      <div class="cam-empty" id="camEmpty">Camera off — start monitoring to enable the front camera</div>
+    </div>
+  </div>
+
+  <!-- controls -->
+  <div class="controls">
+    <div class="row">
+      <button class="primary" id="startBtn">Start monitoring</button>
+      <button class="ghost" id="calibrateBtn" disabled>Calibrate</button>
+    </div>
+    <div class="row">
+      <button id="testBtn">Test alarm</button>
+    </div>
+
+    <div class="setting">
+      <div class="lbl"><span>Eye-closed sensitivity</span><span class="val" id="sensVal">5</span></div>
+      <input type="range" id="sens" min="1" max="10" step="1" value="5">
+      <p>Higher = alarms with the slightest eye closure. Use <b style="color:var(--warn)">Calibrate</b> for an automatic fit to your face and seating.</p>
+    </div>
+
+    <div class="setting">
+      <div class="lbl"><span>Alarm delay</span><span class="val" id="delayVal">1.2 s</span></div>
+      <input type="range" id="delay" min="400" max="2500" step="100" value="1200">
+      <p>How long eyes must stay closed before the alarm fires. Lower reacts faster; higher tolerates long blinks.</p>
+    </div>
+
+    <div class="toggles">
+      <div class="toggle"><span>Sound</span><div class="switch on" id="swSound"></div></div>
+      <div class="toggle"><span>Vibration</span><div class="switch on" id="swVibe"></div></div>
+      <div class="toggle"><span>Head-down alert</span><div class="switch on" id="swHead"></div></div>
+      <div class="toggle"><span>Keep screen on</span><div class="switch on" id="swWake"></div></div>
+    </div>
+
+    <div class="note">
+      <b>Camera needs https.</b> Phone browsers only allow the camera on a secure <b>https://</b> address (or localhost). If you opened this as a downloaded file (the address bar shows <b>content://</b> or <b>file://</b>), the camera stays blocked — host the file on a free service like Netlify Drop or GitHub Pages and open that link instead.
+      <br><br>
+      <b>Drive safely.</b> Vigil is a backup aid, not a substitute for rest. It can miss closures in poor light, with sunglasses, or at bad camera angles. If you feel drowsy, the only real fix is to stop and rest. All processing stays on your device; nothing is uploaded.
+    </div>
+  </div>
+</div>
+
+<!-- full-screen alarm -->
+<div class="alarm" id="alarmOverlay">
+  <div>
+    <div class="ico">⚠️</div>
+    <h2 id="alarmTitle">WAKE UP</h2>
+    <p id="alarmMsg">EYES CLOSED — STAY ALERT</p>
+    <button id="dismissBtn">I'M AWAKE</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+
+  // ---- elements
+  const video=$('video'), overlay=$('overlay'), octx=overlay.getContext('2d');
+  const stage=$('stage'), statePill=$('statePill'), statusWord=$('statusWord');
+  const ringProg=$('ringProg'), eyeWhite=$('eyeWhite'), eyeClipPath=$('eyeClipPath');
+  const iris=$('iris'), pupil=$('pupil'), lashL=$('lashL'), lashR=$('lashR');
+  const openPct=$('openPct'), verdict=$('verdict'), subverdict=$('subverdict');
+  const earVal=$('earVal'), closedT=$('closedT'), perclosEl=$('perclos'), bpmEl=$('bpm');
+  const rec=$('rec'), camEmpty=$('camEmpty');
+  const startBtn=$('startBtn'), calibrateBtn=$('calibrateBtn'), testBtn=$('testBtn');
+  const sens=$('sens'), sensVal=$('sensVal'), delay=$('delay'), delayVal=$('delayVal');
+  const alarmOverlay=$('alarmOverlay'), dismissBtn=$('dismissBtn'), alarmTitle=$('alarmTitle'), alarmMsg=$('alarmMsg');
+  const RING_LEN=867;
+
+  // ---- state
+  let running=false, processing=false, faceMesh=null, stream=null, rafId=null, wakeLock=null;
+  let baselineEAR=0.30, thresholdEAR=0.20;            // open baseline + closed threshold
+  let closedSince=0, lastFaceTs=0, alarmActive=false, alarmKind="";
+  let calibrating=false, calStart=0, calSamples=[];
+  let smEAR=0.30;                                      // smoothed EAR
+  let lastBlinkState=false, blinkTimes=[];
+  const perWindow=[];                                  // {t, closed} last 60s
+  const settings={sound:true, vibe:true, head:true, wake:true};
+
+  // ---- MediaPipe eye + mouth landmark indices (refined mesh)
+  const LEFT=[33,160,158,133,153,144];   // p1..p6
+  const RIGHT=[362,385,387,263,373,380];
+  const MOUTH=[13,14,78,308];            // upper, lower, leftCorner, rightCorner
+
+  const dist=(a,b)=>Math.hypot(a.x-b.x, a.y-b.y);
+  function earOf(L, idx){
+    const p=idx.map(i=>L[i]);
+    return (dist(p[1],p[5]) + dist(p[2],p[4])) / (2*dist(p[0],p[3]) || 1e-6);
+  }
+  function marOf(L){
+    const p=MOUTH.map(i=>L[i]);
+    return dist(p[0],p[1]) / (dist(p[2],p[3]) || 1e-6);
+  }
+
+  // ---- sensitivity -> threshold (relative to baseline)
+  function applySensitivity(){
+    const s=+sens.value;                  // 1..10
+    sensVal.textContent=s;
+    const frac=0.50 + s*0.035;            // s1=0.535 ... s10=0.85 of baseline
+    thresholdEAR=baselineEAR*frac;
+  }
+  sens.addEventListener('input', applySensitivity);
+  delay.addEventListener('input', ()=>{ delayVal.textContent=(delay.value/1000).toFixed(1)+' s'; });
+
+  // ---- toggles
+  function bindSwitch(id,key){
+    const el=$(id);
+    el.addEventListener('click',()=>{ settings[key]=!settings[key]; el.classList.toggle('on',settings[key]);
+      if(key==='wake'){ settings.wake ? requestWake() : releaseWake(); }});
+  }
+  bindSwitch('swSound','sound'); bindSwitch('swVibe','vibe'); bindSwitch('swHead','head'); bindSwitch('swWake','wake');
+
+  // ---- audio
+  let audioCtx=null;
+  function ensureAudio(){ if(!audioCtx){ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); }
+    if(audioCtx.state==='suspended') audioCtx.resume(); }
+  function beep(freq,dur,vol){
+    if(!audioCtx) return;
+    const t=audioCtx.currentTime, o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type='square'; o.frequency.value=freq;
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+0.012);
+    g.gain.linearRampToValueAtTime(0,t+dur);
+    o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t+dur+0.02);
+  }
+  let alarmTimer=null, toggleTone=false, spokeAt=0;
+  function startAlarmSound(){
+    if(alarmTimer) return;
+    const pulse=()=>{
+      if(settings.sound){ toggleTone=!toggleTone; beep(toggleTone?1180:840,0.16,0.9); }
+      if(settings.vibe && navigator.vibrate) navigator.vibrate([180,90,180]);
+      const now=performance.now();
+      if(settings.sound && 'speechSynthesis' in window && now-spokeAt>2400){
+        spokeAt=now; try{ const u=new SpeechSynthesisUtterance(alarmKind==='head'?'Eyes on the road':'Wake up');
+          u.rate=1.05; u.volume=1; speechSynthesis.cancel(); speechSynthesis.speak(u);}catch(e){}
+      }
+    };
+    pulse(); alarmTimer=setInterval(pulse,360);
+  }
+  function stopAlarmSound(){ if(alarmTimer){clearInterval(alarmTimer);alarmTimer=null;} if(navigator.vibrate)navigator.vibrate(0); }
+
+  // ---- alarm state
+  function raiseAlarm(kind){
+    if(alarmActive) return; alarmActive=true; alarmKind=kind;
+    if(kind==='head'){ alarmTitle.textContent='EYES ON ROAD'; alarmMsg.textContent='NO FACE DETECTED — LOOK UP'; }
+    else { alarmTitle.textContent='WAKE UP'; alarmMsg.textContent='EYES CLOSED — STAY ALERT'; }
+    alarmOverlay.classList.add('show'); ensureAudio(); startAlarmSound();
+  }
+  function clearAlarm(){ if(!alarmActive)return; alarmActive=false; alarmOverlay.classList.remove('show'); stopAlarmSound(); }
+  dismissBtn.addEventListener('click', ()=>{ clearAlarm(); closedSince=0; lastFaceTs=performance.now(); });
+
+  testBtn.addEventListener('click', ()=>{ ensureAudio();
+    let n=0; const id=setInterval(()=>{ beep(n%2?1180:840,0.16,0.9); if(++n>=4)clearInterval(id); },300);
+    if(navigator.vibrate) navigator.vibrate([180,90,180]);
+  });
+
+  // ---- screen wake lock
+  async function requestWake(){ try{ if('wakeLock'in navigator){ wakeLock=await navigator.wakeLock.request('screen'); } }catch(e){} }
+  function releaseWake(){ try{ wakeLock&&wakeLock.release(); wakeLock=null; }catch(e){} }
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'&&running&&settings.wake) requestWake(); });
+
+  // ---- draw the on-screen eye from openness 0..1
+  function drawEye(openness){
+    const cx=150, cy=150, halfW=108;
+    const h=6 + openness*78;                      // vertical half-opening
+    const lx=cx-halfW, rx=cx+halfW;
+    const d=`M ${lx} ${cy} Q ${cx} ${cy-h} ${rx} ${cy} Q ${cx} ${cy+h} ${lx} ${cy} Z`;
+    eyeWhite.setAttribute('d', d);
+    eyeClipPath.setAttribute('d', d);
+    const irisR=Math.max(8, Math.min(40, h*0.62));
+    iris.setAttribute('r', irisR); pupil.setAttribute('r', Math.max(4,irisR*0.4));
+    iris.style.opacity = openness<0.12 ? 0 : 1;
+    lashL.setAttribute('y1',cy); lashL.setAttribute('y2',cy);
+    lashR.setAttribute('y1',cy); lashR.setAttribute('y2',cy);
+    ringProg.setAttribute('stroke-dashoffset', RING_LEN*(1-openness));
+    openPct.textContent = Math.round(openness*100);
+  }
+
+  // ---- overlay landmarks
+  function drawOverlay(L){
+    overlay.width=overlay.clientWidth; overlay.height=overlay.clientHeight;
+    octx.clearRect(0,0,overlay.width,overlay.height);
+    if(!L) return;
+    const W=overlay.width, H=overlay.height;
+    const drawSet=(idx,color)=>{ octx.beginPath();
+      idx.forEach((i,k)=>{ const p=L[i]; const x=p.x*W, y=p.y*H; k?octx.lineTo(x,y):octx.moveTo(x,y); });
+      octx.closePath(); octx.strokeStyle=color; octx.lineWidth=2; octx.stroke(); };
+    const col = alarmActive?'#FF3B47':(stage.classList.contains('warn')?'#FFB23E':'#2EE6C2');
+    drawSet([33,160,158,133,153,144],col);
+    drawSet([362,385,387,263,373,380],col);
+  }
+
+  // ---- per-frame update
+  function update(L, now){
+    let ear=null;
+    if(L){
+      lastFaceTs=now;
+      ear=(earOf(L,LEFT)+earOf(L,RIGHT))/2;
+      smEAR = smEAR*0.6 + ear*0.4;                 // light smoothing
+
+      if(calibrating){
+        calSamples.push(smEAR);
+        if(now-calStart>2200){
+          calibrating=false;
+          const sorted=calSamples.slice().sort((a,b)=>a-b);
+          baselineEAR=sorted[Math.floor(sorted.length*0.5)] || baselineEAR;
+          applySensitivity();
+          subverdict.textContent='Calibrated · baseline '+baselineEAR.toFixed(3);
+          calibrateBtn.textContent='Calibrate';
+        } else {
+          subverdict.textContent='Hold eyes open… '+(2.2-(now-calStart)/1000).toFixed(1)+'s';
+        }
+      }
+    }
+
+    // openness for the visual (relative to baseline & closed floor)
+    const floor=baselineEAR*0.45;
+    const openness=Math.max(0,Math.min(1,((smEAR-floor)/((baselineEAR-floor)||1e-6))));
+    drawEye(L?openness:0);
+    drawOverlay(L);
+    earVal.textContent = L? smEAR.toFixed(3) : '--';
+
+    // PERCLOS over 60s
+    const closedNow = L ? smEAR < thresholdEAR : false;
+    perWindow.push({t:now, closed:closedNow});
+    while(perWindow.length && now-perWindow[0].t>60000) perWindow.shift();
+    const cc=perWindow.reduce((a,b)=>a+(b.closed?1:0),0);
+    perclosEl.innerHTML = Math.round(100*cc/(perWindow.length||1))+'<small>%</small>';
+
+    // blink rate
+    if(L){
+      if(closedNow && !lastBlinkState) blinkTimes.push(now);
+      lastBlinkState=closedNow;
+    }
+    while(blinkTimes.length && now-blinkTimes[0]>60000) blinkTimes.shift();
+    bpmEl.textContent = L? blinkTimes.length : '--';
+
+    // ---- decision logic
+    const headDownMs = now-lastFaceTs;
+    if(running && !L && settings.head && lastFaceTs && headDownMs>2200){
+      // prolonged no-face = head down / looking away
+      stage.classList.remove('warn'); stage.classList.add('crit');
+      statusWord.textContent='Signal'; verdict.textContent='NO FACE'; verdict.style.color='var(--crit)';
+      subverdict.textContent='Looking away or head down';
+      raiseAlarm('head');
+      closedT.innerHTML=(headDownMs/1000).toFixed(1)+'<small>s</small>';
+      return;
+    }
+
+    if(L && closedNow){
+      if(!closedSince) closedSince=now;
+      const dur=now-closedSince;
+      closedT.innerHTML=(dur/1000).toFixed(1)+'<small>s</small>';
+      if(dur > +delay.value){
+        stage.classList.remove('warn'); stage.classList.add('crit');
+        statusWord.textContent='Alert'; verdict.textContent='DROWSY'; verdict.style.color='var(--crit)';
+        subverdict.textContent='Eyes closed too long';
+        raiseAlarm('eyes');
+      } else {
+        stage.classList.add('warn'); stage.classList.remove('crit');
+        statusWord.textContent='Eyes closing'; verdict.textContent='WATCH'; verdict.style.color='var(--warn)';
+        subverdict.textContent='Eyes closed '+(dur/1000).toFixed(1)+'s';
+      }
+    } else {
+      closedSince=0;
+      closedT.innerHTML='0.0<small>s</small>';
+      if(!alarmActive){
+        stage.classList.remove('warn','crit');
+        if(L){
+          statusWord.textContent='Eye openness'; verdict.textContent='AWAKE'; verdict.style.color='var(--awake)';
+          if(!calibrating) subverdict.textContent='Eyes tracking · stay focused';
+        } else {
+          statusWord.textContent='Searching'; verdict.textContent='NO FACE'; verdict.style.color='var(--muted)';
+          subverdict.textContent='Position your face in view';
+        }
+      }
+      // auto-clear an eyes alarm once eyes reopen
+      if(alarmActive && alarmKind==='eyes' && L && !closedNow) clearAlarm();
+      if(alarmActive && alarmKind==='head' && L) clearAlarm();
+    }
+  }
+
+  // ---- MediaPipe results
+  function onResults(res){
+    processing=false;
+    const L = res.multiFaceLandmarks && res.multiFaceLandmarks[0];
+    update(L||null, performance.now());
+  }
+
+  async function setupMesh(){
+    if(faceMesh) return;
+    faceMesh=new FaceMesh({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${f}`});
+    faceMesh.setOptions({maxNumFaces:1, refineLandmarks:true, minDetectionConfidence:0.5, minTrackingConfidence:0.5});
+    faceMesh.onResults(onResults);
+  }
+
+  function loop(){
+    if(running && video.readyState>=2 && !processing){
+      processing=true;
+      faceMesh.send({image:video}).catch(()=>{processing=false;});
+    }
+    rafId=requestAnimationFrame(loop);
+  }
+
+  // ---- start / stop
+  async function start(){
+    ensureAudio();
+    startBtn.textContent='Starting…'; startBtn.disabled=true;
+    try{
+      if(!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+        throw new Error('insecure');
+      }
+      if(typeof FaceMesh==='undefined') throw new Error('lib');
+      await setupMesh();
+      stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false});
+      video.srcObject=stream; await video.play();
+      camEmpty.style.display='none'; rec.classList.add('on'); rec.lastChild.textContent='LIVE';
+      running=true; lastFaceTs=performance.now();
+      statePill.textContent='Monitoring'; statePill.classList.add('live');
+      startBtn.textContent='Stop monitoring'; startBtn.className='stop'; startBtn.disabled=false;
+      calibrateBtn.disabled=false;
+      if(settings.wake) requestWake();
+      loop();
+    }catch(err){
+      startBtn.disabled=false; startBtn.textContent='Start monitoring'; startBtn.className='primary';
+      if(err && err.message==='insecure'){
+        verdict.textContent='NEEDS HTTPS'; verdict.style.color='var(--warn)';
+        subverdict.textContent='Opened as a local file — camera needs an https:// address (see note below)';
+      }
+      else if(err && err.message==='lib'){ subverdict.textContent='Face-tracking library failed to load — check connection'; }
+      else if(err && (err.name==='NotAllowedError'||err.name==='NotFoundError')){
+        subverdict.textContent='Camera blocked — allow camera access and retry';
+      } else { subverdict.textContent='Could not start camera: '+(err.name||'error'); }
+    }
+  }
+  function stop(){
+    running=false; clearAlarm();
+    if(rafId)cancelAnimationFrame(rafId);
+    if(stream){stream.getTracks().forEach(t=>t.stop()); stream=null;}
+    video.srcObject=null; releaseWake();
+    rec.classList.remove('on'); rec.lastChild.textContent='OFFLINE';
+    camEmpty.style.display='grid';
+    statePill.textContent='Standby'; statePill.classList.remove('live');
+    stage.classList.remove('warn','crit');
+    startBtn.textContent='Start monitoring'; startBtn.className='primary';
+    calibrateBtn.disabled=true; verdict.textContent='STANDBY'; verdict.style.color='var(--muted)';
+    statusWord.textContent='Eye openness'; subverdict.textContent='Tap Start monitoring to begin';
+    drawEye(0); openPct.textContent='--'; earVal.textContent='--';
+    octx&&octx.clearRect(0,0,overlay.width,overlay.height);
+  }
+  startBtn.addEventListener('click', ()=> running?stop():start());
+
+  calibrateBtn.addEventListener('click', ()=>{
+    if(!running) return; calibrating=true; calStart=performance.now(); calSamples=[];
+    calibrateBtn.textContent='Calibrating…';
+  });
+
+  // init visuals
+  drawEye(0); applySensitivity();
+  window.addEventListener('resize', ()=>{ overlay.width=overlay.clientWidth; overlay.height=overlay.clientHeight; });
+})();
+</script>
+</body>
+</html>
