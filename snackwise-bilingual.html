@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Snackwise</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Archivo+Black&display=swap');
+:root{ --ink:#16140F; --paper:#F4F2EC; --card:#FFFFFF; --green:#1F7A4D; --grape:#6E3FA3; }
+*{box-sizing:border-box;}
+html,body{margin:0;}
+body{
+  min-height:100vh;
+  background:radial-gradient(120% 60% at 50% -10%, #FBE9C9 0%, rgba(251,233,201,0) 55%), var(--paper);
+  font-family:'Archivo',system-ui,sans-serif; color:var(--ink);
+  display:flex; justify-content:center; padding:18px 14px 40px; -webkit-font-smoothing:antialiased;
+}
+.phone{ width:100%; max-width:430px; }
+
+.head{ text-align:center; margin:6px 0 16px; position:relative; }
+.logo{ display:inline-flex; align-items:center; gap:8px; }
+.logo-mark{ font-size:26px; line-height:1; color:var(--grape); transform:rotate(-20deg); display:inline-block; }
+.logo-word{ font-family:'Archivo Black',sans-serif; font-size:27px; letter-spacing:-.5px; }
+.tag{ margin:4px 0 0; font-size:13px; font-weight:600; color:#6c6760; letter-spacing:.2px; }
+.lang{ position:absolute; top:0; right:0; display:flex; border:1.5px solid var(--ink); border-radius:9px; overflow:hidden; }
+.lang button{ border:0; background:#fff; cursor:pointer; font-family:'Archivo',sans-serif; font-weight:800; font-size:12px; color:#6c6760; padding:6px 10px; }
+.lang button.on{ background:var(--ink); color:#fff; }
+
+.card{ background:var(--card); border:2px solid var(--ink); border-radius:18px; padding:14px; box-shadow:5px 6px 0 rgba(22,20,15,.10); }
+.seg{ display:flex; gap:4px; background:#EFEDE6; border:1.5px solid var(--ink); border-radius:11px; padding:3px; margin-bottom:14px; }
+.seg-btn{ flex:1; border:0; background:transparent; cursor:pointer; font-family:'Archivo',sans-serif; font-weight:700; font-size:14px; color:#6c6760; padding:9px 6px; border-radius:8px; transition:.15s; }
+.seg-btn.on{ background:var(--ink); color:#fff; }
+
+.pane{ display:none; }
+.pane.on{ display:block; }
+.scan{ display:flex; flex-direction:column; align-items:center; gap:10px; }
+.shutter{ width:100%; border:2px dashed var(--grape); background:#F6F1FB; color:var(--grape); font-family:'Archivo',sans-serif; font-weight:800; font-size:16px; cursor:pointer; padding:22px 12px; border-radius:14px; display:flex; align-items:center; justify-content:center; gap:9px; transition:.15s; }
+.shutter:hover:not(:disabled){ background:#EFE6FA; }
+.shutter:disabled{ cursor:default; border-style:solid; color:#8a8a8a; background:#f2f2f0; }
+.shutter-ic{ font-size:22px; line-height:1; }
+.thumb{ width:100%; max-height:180px; object-fit:cover; border-radius:12px; border:1.5px solid var(--ink); }
+.hint{ font-size:12.5px; color:#777169; margin:0; text-align:center; }
+.hint b{ color:var(--ink); }
+.progress{ width:100%; height:8px; background:#EDE9F4; border-radius:99px; overflow:hidden; border:1px solid #d9d2ea; }
+.progress > i{ display:block; height:100%; width:0%; background:var(--grape); transition:width .25s; }
+.progress-lbl{ font-size:12px; font-weight:700; color:var(--grape); margin:0; }
+
+.paste{ display:flex; flex-direction:column; gap:10px; }
+.ta{ width:100%; border:1.5px solid var(--ink); border-radius:12px; padding:12px; font-family:'Archivo',sans-serif; font-size:14.5px; line-height:1.45; resize:vertical; background:#FCFBF8; color:var(--ink); }
+.ta:focus{ outline:3px solid #D9C7F0; outline-offset:1px; }
+.go{ border:0; background:var(--grape); color:#fff; cursor:pointer; font-family:'Archivo',sans-serif; font-weight:800; font-size:15.5px; padding:13px; border-radius:12px; transition:.15s; }
+.go:hover{ background:#5b3189; }
+
+.ex{ margin-top:14px; padding-top:12px; border-top:1.5px dashed #ddd8cf; }
+.ex-label{ font-size:12px; font-weight:700; color:#8a847b; text-transform:uppercase; letter-spacing:.5px; }
+.ex-chips{ display:flex; flex-wrap:wrap; gap:7px; margin-top:8px; }
+.chip{ border:1.5px solid var(--ink); background:#fff; color:var(--ink); cursor:pointer; font-family:'Archivo',sans-serif; font-weight:600; font-size:12.5px; padding:6px 11px; border-radius:999px; transition:.12s; }
+.chip:hover{ background:var(--ink); color:#fff; }
+
+.error{ margin-top:14px; background:#F6E7E4; border:1.5px solid #B23B2E; color:#8a2c22; border-radius:12px; padding:12px 14px; font-size:13.5px; font-weight:600; }
+
+.panel{ margin-top:16px; background:#fff; border:2px solid var(--ink); border-radius:6px; padding:14px 16px 16px; box-shadow:5px 6px 0 rgba(22,20,15,.10); animation:pop .25s ease both; }
+@keyframes pop{ from{ opacity:0; transform:translateY(8px);} to{ opacity:1; transform:none;} }
+.panel-title{ font-family:'Archivo Black',sans-serif; font-size:30px; letter-spacing:-.6px; line-height:.95; text-transform:uppercase; }
+.rule{ background:var(--ink); border-radius:2px; }
+.rule-xl{ height:9px; margin:7px 0; }
+.rule-lg{ height:4px; margin:11px 0; }
+.verdict-txt{ font-family:'Archivo Black',sans-serif; font-size:23px; letter-spacing:-.3px; }
+.counts{ display:flex; align-items:center; gap:7px; font-size:14px; font-weight:600; color:#555049; margin-top:2px; }
+.counts b{ font-family:'Archivo Black',sans-serif; font-size:18px; }
+.counts-sep{ color:#bbb; }
+.clean{ display:flex; gap:11px; align-items:flex-start; padding:4px 0; }
+.clean-ic{ flex:none; width:30px; height:30px; border-radius:50%; background:var(--green); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:17px; }
+.clean p{ margin:3px 0 0; font-size:14px; line-height:1.45; color:#3c3833; }
+.list{ list-style:none; margin:0; padding:0; }
+.item{ padding:12px 0; border-bottom:1px solid #e7e3da; }
+.item:last-child{ border-bottom:0; padding-bottom:2px; }
+.item-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.item-name{ font-weight:800; font-size:16px; letter-spacing:-.2px; }
+.badge{ flex:none; font-weight:800; font-size:11px; text-transform:uppercase; letter-spacing:.6px; padding:4px 9px; border-radius:999px; }
+.item-cat{ font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#9a948b; margin-top:2px; }
+.item-sum{ margin:6px 0 4px; font-size:14.5px; font-weight:700; color:#2a2722; line-height:1.35; }
+.item-det{ margin:0 0 8px; font-size:13.5px; color:#5a554e; line-height:1.5; }
+.item-status{ display:inline-block; font-size:11.5px; font-weight:700; border:1.5px solid; border-radius:6px; padding:3px 8px; }
+.key{ display:flex; flex-wrap:wrap; gap:12px; }
+.key-item{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:#555; }
+.key-item i{ width:11px; height:11px; border-radius:3px; display:inline-block; }
+.insight{ margin-top:13px; }
+.insight-box{ background:#F6F1FB; border:1.5px solid var(--grape); border-radius:12px; padding:12px 14px; }
+.insight-h{ font-family:'Archivo Black',sans-serif; font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--grape); margin-bottom:5px; }
+.insight-box p{ margin:0; font-size:14px; line-height:1.55; color:#3a3340; }
+.foot{ margin-top:18px; padding:0 4px; }
+.foot p{ font-size:11.5px; line-height:1.55; color:#857f76; margin:0; text-align:center; }
+.foot b{ color:#5a554e; }
+:focus-visible{ outline:3px solid #D9C7F0; outline-offset:2px; border-radius:6px; }
+@media (prefers-reduced-motion:reduce){ .panel{ animation:none !important; } }
+</style>
+</head>
+<body>
+<div class="phone">
+  <header class="head">
+    <div class="lang" id="lang">
+      <button data-l="ms" class="on">BM</button>
+      <button data-l="en">EN</button>
+    </div>
+    <div class="logo"><span class="logo-mark">◓</span><span class="logo-word">Snackwise</span></div>
+    <p class="tag" id="tag"></p>
+  </header>
+
+  <section class="card">
+    <div class="seg" role="tablist">
+      <button class="seg-btn on" id="tab-scan" role="tab"></button>
+      <button class="seg-btn" id="tab-paste" role="tab"></button>
+    </div>
+
+    <div class="pane on scan" id="pane-scan">
+      <input type="file" accept="image/*" capture="environment" id="file" hidden />
+      <button class="shutter" id="shutterBtn"><span class="shutter-ic">⌖</span><span id="shutterTxt"></span></button>
+      <div id="ocrProgress" style="width:100%; display:none; flex-direction:column; gap:6px;">
+        <p class="progress-lbl" id="ocrLabel"></p>
+        <div class="progress"><i id="ocrBar"></i></div>
+      </div>
+      <img id="thumb" class="thumb" style="display:none;" />
+      <p class="hint" id="hint"></p>
+    </div>
+
+    <div class="pane paste" id="pane-paste">
+      <textarea class="ta" id="ta" rows="5"></textarea>
+      <button class="go" id="checkBtn"></button>
+    </div>
+
+    <div class="ex">
+      <span class="ex-label" id="exLabel"></span>
+      <div class="ex-chips" id="chips"></div>
+    </div>
+  </section>
+
+  <div id="errorBox"></div>
+  <div id="results"></div>
+
+  <footer class="foot"><p id="foot"></p></footer>
+</div>
+
+<script>
+/* =================== bilingual UI strings =================== */
+const I18N = {
+  ms:{
+    tag:"Tahu apa yang ada dalam snek mereka.",
+    scan:"Imbas foto", paste:"Tampal teks",
+    shutter:"Ambil foto senarai ramuan",
+    ocrPrep:"Menyediakan pembaca…", ocrRead:"Membaca label…",
+    thumbAlt:"Label yang anda tangkap",
+    hint:"Pembaca percuma dalam peranti. Halakan pada senarai <b>Ramuan</b> yang kecil, bukan bahagian depan kotak. Foto pertama memuatkan pembaca (beberapa saat), kemudian serta-merta.",
+    placeholder:"Tampal atau taip senarai ramuan…\ncth. Sirap glukosa, gula, asid sitrik, pewarna (E129, E102)…",
+    check:"Periksa ramuan", noLabel:"Tiada label?",
+    panelTitle:"Semakan Ramuan", flagged:"dikesan", read:"ramuan dibaca",
+    vClean:"Tiada isu dikesan", vAvoid:"Wajar dielak", vCaution:"Perlu berhati-hati", vWatch:"Perkara kecil untuk dipantau",
+    cleanMsg:"Tiada bahan tambahan yang dipantau Snackwise dijumpai di sini. Masih elok lihat jumlah gula dan garam pada Maklumat Pemakanan.",
+    keyClean:"Bersih", insightH:"Pandangan Snackwise",
+    take3:"Produk ini mengandungi bahan tambahan yang sedang ditarik keluar di beberapa negara — mudah dielak apabila boleh.",
+    take2:"Ada beberapa perkara untuk diawasi di sini. Tak perlu risau untuk satu hidangan — lebih sesuai sebagai makanan 'sekali-sekala' berbanding setiap hari.",
+    take1:"Hanya perkara kecil untuk dipantau. Umumnya tak mengapa secara sederhana; perhatikan berapa kerap ia muncul.",
+    takeTail:" Seperti biasa, snek sekali-sekala tidak menjadi masalah — corak pemakanan keseluruhan yang lebih penting.",
+    errEmpty:"Taip atau tampal senarai ramuan dahulu.",
+    errNoRead:"Pembaca percuma tidak dapat membaca teks dalam foto itu. Cuba foto yang lebih jelas dan terang bagi senarai ramuan sahaja — atau tukar ke Tampal dan taip sendiri.",
+    errRun:"Tidak dapat menjalankan pembaca. Periksa sambungan internet (ia memuat turun model kecil pada kali pertama), atau gunakan Tampal untuk menaip ramuan.",
+    foot:"<b>Snackwise ialah panduan, bukan doktor.</b> Penanda ini merujuk status antarabangsa (FDA, EU, WHO) dan kajian yang kadangkala bercampur. Di Malaysia, bahan tambahan dikawal di bawah Peraturan-Peraturan Makanan 1985 (KKM) dan hadnya mungkin berbeza. Makan snek sekali-sekala biasanya tidak mengapa — corak pemakanan harian yang lebih penting. Untuk alahan atau masalah kesihatan, rujuk pakar pediatrik anda.",
+    examples:[
+      {name:"Gula-gula getah buah",text:"Sirap glukosa, gula, kanji jagung ubah suai, air, asid sitrik, natrium sitrat, perisa tiruan, asid askorbik (vitamin C), pewarna (E129, E102, E133), lilin karnauba."},
+      {name:"Air kotak berperisa",text:"Air, sirap jagung fruktosa tinggi, gula, asid sitrik, perisa tiruan, pengawet (natrium benzoat E211), pewarna (E110)."},
+      {name:"Kerepek perisa keju",text:"Tepung gandum, minyak sayuran, keju, garam, paprika, yis, lesitin soya, pewarna (E102, E110), pengawet (TBHQ, E319)."},
+      {name:"Snek yang lebih ringkas",text:"Oat organik, madu organik, badam, minyak bunga matahari, garam laut, kayu manis."},
+    ],
+  },
+  en:{
+    tag:"Know what's in their snack.",
+    scan:"Scan photo", paste:"Paste text",
+    shutter:"Snap the ingredients panel",
+    ocrPrep:"Getting the reader ready…", ocrRead:"Reading the label…",
+    thumbAlt:"Label you captured",
+    hint:"Free on-device reader. Point at the small <b>Ingredients</b> list, not the front of the box. First photo loads the reader (a few seconds), then it's instant.",
+    placeholder:"Paste or type the ingredient list…\ne.g. Glucose syrup, sugar, citric acid, colour (E129, E102)…",
+    check:"Check ingredients", noLabel:"No label handy?",
+    panelTitle:"Ingredient Check", flagged:"flagged", read:"ingredients read",
+    vClean:"Nothing flagged", vAvoid:"Worth avoiding", vCaution:"A few cautions", vWatch:"Minor watch-items",
+    cleanMsg:"None of the additives Snackwise watches for turned up here. Still worth a glance at the sugar and salt on the Nutrition Facts.",
+    keyClean:"Clean", insightH:"Snackwise take",
+    take3:"This has an additive that's being pulled from the food supply in some countries — an easy one to skip when you can.",
+    take2:"A few cautions here. No need to panic over one serving — it's a better fit as a 'sometimes' food than an everyday one.",
+    take1:"Just minor watch-items. Generally fine in moderation; keep an eye on how often it shows up.",
+    takeTail:" As always, an occasional treat won't make or break things — the overall pattern of eating matters most.",
+    errEmpty:"Type or paste an ingredient list first.",
+    errNoRead:"The free reader couldn't make out the text in that photo. Try a sharper, well-lit shot of just the ingredients list — or switch to Paste and type it in.",
+    errRun:"Couldn't run the reader. Check your connection (it downloads a small model the first time), or use Paste to type the ingredients instead.",
+    foot:"<b>Snackwise is a guide, not a doctor.</b> Flags reference international status (FDA, EU, WHO) and research that's sometimes mixed. Local rules differ — in Malaysia, additives fall under the Food Regulations 1985 (MOH). An occasional treat is usually fine — what kids eat most of the time matters most. For allergies or health concerns, talk to your pediatrician.",
+    examples:[
+      {name:"Rainbow fruit snacks",text:"Corn syrup, sugar, modified corn starch, water, citric acid, sodium citrate, natural and artificial flavors, ascorbic acid (vitamin C), red 40, yellow 5, blue 1, carnauba wax."},
+      {name:"Frosted toaster pastry",text:"Enriched flour, corn syrup, high fructose corn syrup, dextrose, soybean and palm oil, sugar, citric acid, gelatin, red 40, yellow 6, blue 1, BHT for freshness."},
+      {name:"Cheesy crackers",text:"Enriched flour, vegetable oil, cheese, salt, paprika, yeast, soy lecithin, yellow 5, yellow 6, TBHQ (preservative)."},
+      {name:"A simpler snack",text:"Organic rolled oats, organic honey, almonds, sunflower oil, sea salt, cinnamon."},
+    ],
+  },
+};
+
+/* =================== knowledge base (shared aliases, bilingual display) =================== */
+const DB=[
+  {id:"red3",level:"avoid",aliases:["red 3","red no. 3","red no 3","fd&c red no. 3","erythrosine","eritrosina","red dye 3","e127"],
+    en:{name:"Red 3 (Erythrosine, E127)",cat:"Synthetic dye",summary:"Cherry-red dye the FDA is removing from food.",detail:"The FDA revoked its food authorization in Jan 2025 after it caused cancer in lab rats at high doses. Companies must reformulate by 2027.",status:"FDA: authorization revoked, phasing out by 2027"},
+    ms:{name:"Red 3 (Erythrosine, E127)",cat:"Pewarna sintetik",summary:"Pewarna merah ceri yang sedang dikeluarkan FDA daripada makanan.",detail:"FDA menarik balik kebenaran penggunaannya dalam makanan pada Jan 2025 selepas ia menyebabkan kanser pada tikus makmal pada dos tinggi. Syarikat perlu memformulasi semula menjelang 2027.",status:"FDA: kebenaran ditarik balik, fasa keluar 2027"}},
+  {id:"red40",level:"caution",aliases:["red 40","red no. 40","red no 40","fd&c red no. 40","allura red","red dye 40","e129"],
+    en:{name:"Red 40 (Allura Red, E129)",cat:"Synthetic dye",summary:"Most common food dye; tied to hyperactivity in some kids.",detail:"Several studies link synthetic dyes to inattention and hyperactivity in some children. The EU requires a warning label; the FDA is phasing it out by end of 2027.",status:"EU warning label · U.S. phase-out by 2027"},
+    ms:{name:"Red 40 (Allura Red, E129)",cat:"Pewarna sintetik",summary:"Pewarna makanan paling lazim; dikaitkan dengan hiperaktif pada sesetengah kanak-kanak.",detail:"Beberapa kajian mengaitkan pewarna sintetik dengan kurang tumpuan dan hiperaktif pada sesetengah kanak-kanak. EU mewajibkan label amaran; FDA dalam proses fasa keluar menjelang akhir 2027.",status:"Label amaran EU · fasa keluar AS 2027"}},
+  {id:"yellow5",level:"caution",aliases:["yellow 5","yellow no. 5","yellow no 5","tartrazine","tartrazin","fd&c yellow no. 5","e102"],
+    en:{name:"Yellow 5 (Tartrazine, E102)",cat:"Synthetic dye",summary:"Yellow dye linked to behavior effects in sensitive kids.",detail:"Part of the group of dyes flagged for neurobehavioral effects in some children. Can also trigger reactions in people sensitive to it.",status:"EU warning label · U.S. phase-out by 2027"},
+    ms:{name:"Yellow 5 (Tartrazine, E102)",cat:"Pewarna sintetik",summary:"Pewarna kuning yang dikaitkan dengan kesan tingkah laku pada kanak-kanak sensitif.",detail:"Sebahagian daripada kumpulan pewarna yang dibangkitkan kerana kesan neurotingkah laku pada sesetengah kanak-kanak. Juga boleh mencetuskan reaksi pada individu yang sensitif.",status:"Label amaran EU · fasa keluar AS 2027"}},
+  {id:"yellow6",level:"caution",aliases:["yellow 6","yellow no. 6","yellow no 6","sunset yellow","fd&c yellow no. 6","e110"],
+    en:{name:"Yellow 6 (Sunset Yellow, E110)",cat:"Synthetic dye",summary:"Orange-yellow dye in the behavior-concern group.",detail:"One of six synthetic dyes the FDA asked industry to remove. Linked to hyperactivity in some children in review studies.",status:"EU warning label · U.S. phase-out by 2027"},
+    ms:{name:"Yellow 6 (Sunset Yellow, E110)",cat:"Pewarna sintetik",summary:"Pewarna jingga-kuning dalam kumpulan kebimbangan tingkah laku.",detail:"Salah satu daripada enam pewarna sintetik yang diminta FDA supaya dikeluarkan industri. Dikaitkan dengan hiperaktif pada sesetengah kanak-kanak dalam kajian semakan.",status:"Label amaran EU · fasa keluar AS 2027"}},
+  {id:"blue1",level:"caution",aliases:["blue 1","blue no. 1","blue no 1","brilliant blue","fd&c blue no. 1","e133"],
+    en:{name:"Blue 1 (Brilliant Blue, E133)",cat:"Synthetic dye",summary:"Bright blue dye in the phase-out group.",detail:"Among the synthetic colors flagged in California's 2021 review for possible behavioral effects in some children.",status:"U.S. phase-out by 2027"},
+    ms:{name:"Blue 1 (Brilliant Blue, E133)",cat:"Pewarna sintetik",summary:"Pewarna biru terang dalam kumpulan fasa keluar.",detail:"Antara warna sintetik yang dibangkitkan dalam semakan California 2021 atas kemungkinan kesan tingkah laku pada sesetengah kanak-kanak.",status:"Fasa keluar AS 2027"}},
+  {id:"blue2",level:"caution",aliases:["blue 2","blue no. 2","blue no 2","indigotine","indigo carmine","fd&c blue no. 2","e132"],
+    en:{name:"Blue 2 (Indigotine, E132)",cat:"Synthetic dye",summary:"Deep blue dye in the phase-out group.",detail:"One of the six petroleum-based dyes the FDA is working to remove from food.",status:"U.S. phase-out by 2027"},
+    ms:{name:"Blue 2 (Indigotine, E132)",cat:"Pewarna sintetik",summary:"Pewarna biru gelap dalam kumpulan fasa keluar.",detail:"Salah satu daripada enam pewarna berasaskan petroleum yang sedang dikeluarkan FDA daripada makanan.",status:"Fasa keluar AS 2027"}},
+  {id:"green3",level:"caution",aliases:["green 3","green no. 3","green no 3","fast green","fd&c green no. 3","e143"],
+    en:{name:"Green 3 (Fast Green, E143)",cat:"Synthetic dye",summary:"Synthetic green dye in the phase-out group.",detail:"Less common than the reds and yellows, but part of the same group being removed from the food supply.",status:"U.S. phase-out by 2027"},
+    ms:{name:"Green 3 (Fast Green, E143)",cat:"Pewarna sintetik",summary:"Pewarna hijau sintetik dalam kumpulan fasa keluar.",detail:"Kurang lazim berbanding merah dan kuning, tetapi sebahagian daripada kumpulan sama yang sedang dikeluarkan daripada bekalan makanan.",status:"Fasa keluar AS 2027"}},
+  {id:"e104",level:"caution",aliases:["quinoline yellow","kuinolin kuning","e104"],
+    en:{name:"Quinoline Yellow (E104)",cat:"Synthetic dye",summary:"Yellow dye not permitted in U.S. food.",detail:"One of the 'Southampton six' linked to hyperactivity in some children. The EU requires a warning label; it isn't approved for food in the U.S.",status:"EU warning label · not allowed in U.S."},
+    ms:{name:"Quinoline Yellow (E104)",cat:"Pewarna sintetik",summary:"Pewarna kuning yang tidak dibenarkan dalam makanan AS.",detail:"Salah satu daripada 'enam Southampton' yang dikaitkan dengan hiperaktif pada sesetengah kanak-kanak. EU mewajibkan label amaran; tidak diluluskan untuk makanan di AS.",status:"Label amaran EU · tidak dibenarkan di AS"}},
+  {id:"e122",level:"caution",aliases:["carmoisine","azorubine","karmoisin","e122"],
+    en:{name:"Carmoisine / Azorubine (E122)",cat:"Synthetic dye",summary:"Red dye not permitted in U.S. food.",detail:"Part of the 'Southampton six' linked to behavioral effects in some children. The EU requires a warning label; not approved in the U.S.",status:"EU warning label · not allowed in U.S."},
+    ms:{name:"Carmoisine / Azorubine (E122)",cat:"Pewarna sintetik",summary:"Pewarna merah yang tidak dibenarkan dalam makanan AS.",detail:"Sebahagian daripada 'enam Southampton' yang dikaitkan dengan kesan tingkah laku pada sesetengah kanak-kanak. EU mewajibkan label amaran; tidak diluluskan di AS.",status:"Label amaran EU · tidak dibenarkan di AS"}},
+  {id:"e124",level:"caution",aliases:["ponceau 4r","ponceau","e124"],
+    en:{name:"Ponceau 4R (E124)",cat:"Synthetic dye",summary:"Bright red dye banned from U.S. food.",detail:"Among the 'Southampton six' linked to hyperactivity in some children. The EU requires a warning label; banned for food in the U.S.",status:"EU warning label · banned in U.S."},
+    ms:{name:"Ponceau 4R (E124)",cat:"Pewarna sintetik",summary:"Pewarna merah terang yang diharamkan dalam makanan AS.",detail:"Antara 'enam Southampton' yang dikaitkan dengan hiperaktif pada sesetengah kanak-kanak. EU mewajibkan label amaran; diharamkan untuk makanan di AS.",status:"Label amaran EU · diharamkan di AS"}},
+  {id:"bha",level:"caution",aliases:["bha","butylated hydroxyanisole","butilasi hidroksianisol","e320"],
+    en:{name:"BHA (E320)",cat:"Preservative",summary:"Fat preservative the U.S. lists as a possible carcinogen.",detail:"The National Toxicology Program lists BHA as 'reasonably anticipated to be a human carcinogen' from animal studies. Common in cereals, chips and cured meats.",status:"NTP: reasonably anticipated human carcinogen"},
+    ms:{name:"BHA (E320)",cat:"Pengawet",summary:"Pengawet lemak yang disenaraikan AS sebagai kemungkinan karsinogen.",detail:"National Toxicology Program menyenaraikan BHA sebagai 'munasabah dijangka karsinogen manusia' berdasarkan kajian haiwan. Lazim dalam bijirin, kerepek dan daging awet.",status:"NTP: munasabah dijangka karsinogen manusia"}},
+  {id:"bht",level:"caution",aliases:["bht","butylated hydroxytoluene","butilasi hidroksitoluena","e321"],
+    en:{name:"BHT (E321)",cat:"Preservative",summary:"Fat preservative with mixed safety evidence.",detail:"A close cousin of BHA used to keep oils from going rancid. Evidence is mixed; many brands now leave it out of kids' products.",status:"Allowed in U.S. · restricted in some countries"},
+    ms:{name:"BHT (E321)",cat:"Pengawet",summary:"Pengawet lemak dengan bukti keselamatan bercampur.",detail:"Sepupu rapat BHA yang digunakan untuk mengelak minyak menjadi tengik. Bukti bercampur; banyak jenama kini tidak memasukkannya dalam produk kanak-kanak.",status:"Dibenarkan di AS · dihadkan di sesetengah negara"}},
+  {id:"tbhq",level:"caution",aliases:["tbhq","tert-butylhydroquinone","tertiary butylhydroquinone","e319"],
+    en:{name:"TBHQ (E319)",cat:"Preservative",summary:"Synthetic preservative in many processed snacks.",detail:"Used to extend shelf life of oils. Some animal and immune-effect research raises questions; it's tightly limited by amount.",status:"Allowed in U.S. within limits"},
+    ms:{name:"TBHQ (E319)",cat:"Pengawet",summary:"Pengawet sintetik dalam banyak snek terproses.",detail:"Digunakan untuk memanjangkan jangka hayat minyak. Sesetengah kajian haiwan dan kesan imun membangkitkan persoalan; ia dihadkan ketat dari segi kuantiti.",status:"Dibenarkan di AS dalam had tertentu"}},
+  {id:"nitrite",level:"caution",aliases:["sodium nitrite","sodium nitrate","potassium nitrite","potassium nitrate","natrium nitrit","natrium nitrat","nitrit","e249","e250","e251","e252"],
+    en:{name:"Sodium nitrite / nitrate (E250/E251)",cat:"Preservative",summary:"Curing agents in processed meats.",detail:"In hot dogs, deli meats and bacon. Can form nitrosamines when cooked hot; processed meat is linked to higher cancer risk over time.",status:"Allowed · processed meat flagged by WHO/IARC"},
+    ms:{name:"Natrium nitrit / nitrat (E250/E251)",cat:"Pengawet",summary:"Agen pengawet dalam daging terproses.",detail:"Dalam sosej, daging deli dan bacon. Boleh membentuk nitrosamina apabila dimasak panas; daging terproses dikaitkan dengan risiko kanser lebih tinggi dari masa ke masa.",status:"Dibenarkan · daging terproses dibangkitkan WHO/IARC"}},
+  {id:"benzoate",level:"watch",aliases:["sodium benzoate","potassium benzoate","benzoic acid","natrium benzoat","asid benzoik","e210","e211","e212"],
+    en:{name:"Sodium benzoate (E211)",cat:"Preservative",summary:"Common preservative; can form benzene with vitamin C.",detail:"Safe on its own, but combined with vitamin C in some drinks it can form trace benzene. Also studied in dye-plus-preservative hyperactivity research.",status:"Allowed in U.S."},
+    ms:{name:"Natrium benzoat (E211)",cat:"Pengawet",summary:"Pengawet lazim; boleh membentuk benzena dengan vitamin C.",detail:"Selamat secara bersendirian, tetapi apabila digabung dengan vitamin C dalam sesetengah minuman ia boleh membentuk benzena berkadar surih. Turut dikaji dalam penyelidikan hiperaktif pewarna-campur-pengawet.",status:"Dibenarkan di AS"}},
+  {id:"paraben",level:"caution",aliases:["propylparaben","propyl paraben","propilparaben","e216","e217"],
+    en:{name:"Propylparaben (E216)",cat:"Preservative",summary:"Preservative banned from food in the EU.",detail:"Used in some baked goods and tortillas in the U.S. The EU removed it from food over hormone-disruption concerns.",status:"Banned in EU food · allowed in U.S."},
+    ms:{name:"Propilparaben (E216)",cat:"Pengawet",summary:"Pengawet yang diharamkan daripada makanan di EU.",detail:"Digunakan dalam sesetengah produk bakeri dan tortilla di AS. EU mengeluarkannya daripada makanan atas kebimbangan gangguan hormon.",status:"Diharamkan dalam makanan EU · dibenarkan di AS"}},
+  {id:"hfcs",level:"watch",aliases:["high-fructose corn syrup","high fructose corn syrup","hfcs","corn syrup","sirap jagung fruktosa tinggi","sirap jagung","sirap glukosa-fruktosa","sirap glukosa fruktosa"],
+    en:{name:"High-fructose corn syrup",cat:"Added sugar",summary:"Cheap liquid sugar common in kids' snacks and drinks.",detail:"Not uniquely toxic, but it's added sugar by another name. Frequent intake adds up; the concern is overall sugar load, not a single chemical.",status:"Added sugar — watch the amount"},
+    ms:{name:"Sirap jagung fruktosa tinggi",cat:"Gula tambahan",summary:"Gula cair murah yang lazim dalam snek dan minuman kanak-kanak.",detail:"Bukan toksik secara unik, tetapi ia gula tambahan dengan nama lain. Pengambilan kerap akan terkumpul; kebimbangannya ialah jumlah gula keseluruhan, bukan satu bahan kimia.",status:"Gula tambahan — perhatikan jumlahnya"}},
+  {id:"aspartame",level:"caution",aliases:["aspartame","aspartam","e951"],
+    en:{name:"Aspartame (E951)",cat:"Artificial sweetener",summary:"Zero-calorie sweetener with a debated safety profile.",detail:"In 2023 the WHO's cancer agency called it 'possibly carcinogenic,' while food regulators still consider normal intake acceptable. Carries a PKU warning.",status:"WHO/IARC: possibly carcinogenic · allowed"},
+    ms:{name:"Aspartam (E951)",cat:"Pemanis tiruan",summary:"Pemanis sifar kalori dengan profil keselamatan yang diperdebatkan.",detail:"Pada 2023 agensi kanser WHO menggelarnya 'mungkin karsinogenik', sementara pengawal selia makanan masih menganggap pengambilan biasa boleh diterima. Membawa amaran PKU (fenilketonuria).",status:"WHO/IARC: mungkin karsinogenik · dibenarkan"}},
+  {id:"sucralose",level:"watch",aliases:["sucralose","sukralosa","e955"],
+    en:{name:"Sucralose (E955)",cat:"Artificial sweetener",summary:"Common no-calorie sweetener (Splenda).",detail:"Generally considered safe, though research continues on gut and metabolic effects. For young kids the bigger question is building a taste for very sweet foods.",status:"Allowed in U.S."},
+    ms:{name:"Sukralosa (E955)",cat:"Pemanis tiruan",summary:"Pemanis tanpa kalori yang lazim (Splenda).",detail:"Umumnya dianggap selamat, walaupun kajian berterusan tentang kesan usus dan metabolik. Bagi kanak-kanak kecil, persoalan lebih besar ialah membentuk citarasa terhadap makanan yang sangat manis.",status:"Dibenarkan di AS"}},
+  {id:"acek",level:"watch",aliases:["acesulfame potassium","acesulfame-k","acesulfame k","ace-k","acesulfame","asesulfam","e950"],
+    en:{name:"Acesulfame potassium (E950)",cat:"Artificial sweetener",summary:"No-calorie sweetener often paired with others.",detail:"Frequently blended with sucralose or aspartame in 'sugar-free' kids' drinks. Considered safe by regulators; long-term data is still thin.",status:"Allowed in U.S."},
+    ms:{name:"Asesulfam-K (E950)",cat:"Pemanis tiruan",summary:"Pemanis tanpa kalori yang sering digandingkan dengan yang lain.",detail:"Kerap dicampur dengan sukralosa atau aspartam dalam minuman kanak-kanak 'tanpa gula'. Dianggap selamat oleh pengawal selia; data jangka panjang masih terhad.",status:"Dibenarkan di AS"}},
+  {id:"saccharin",level:"watch",aliases:["saccharin","sakarin","e954"],
+    en:{name:"Saccharin (E954)",cat:"Artificial sweetener",summary:"Older artificial sweetener, now cleared of cancer link.",detail:"Once carried a warning label; later removed after the rat-bladder finding was judged not relevant to people. Still an intense sweetener worth limiting for kids.",status:"Allowed in U.S."},
+    ms:{name:"Sakarin (E954)",cat:"Pemanis tiruan",summary:"Pemanis tiruan lama, kini dibersihkan daripada kaitan kanser.",detail:"Pernah membawa label amaran; kemudian dibuang selepas penemuan pundi kencing tikus dinilai tidak relevan kepada manusia. Masih pemanis pekat yang wajar dihadkan untuk kanak-kanak.",status:"Dibenarkan di AS"}},
+  {id:"phos",level:"avoid",aliases:["partially hydrogenated","hydrogenated oil","hydrogenated vegetable oil","minyak terhidrogen separa","minyak terhidrogen","lemak trans"],
+    en:{name:"Partially hydrogenated oil",cat:"Trans fat",summary:"Artificial trans fat — no longer allowed in U.S. food.",detail:"The FDA ended trans-fat use because of clear heart-disease risk. If you still see it, the product is old or imported — skip it.",status:"Banned as added ingredient in U.S."},
+    ms:{name:"Minyak terhidrogen separa (lemak trans)",cat:"Lemak trans",summary:"Lemak trans tiruan — tidak lagi dibenarkan dalam makanan AS.",detail:"FDA menamatkan penggunaan lemak trans kerana risiko penyakit jantung yang jelas. Jika anda masih nampak, produk itu lama atau import — elakkannya.",status:"Diharamkan sebagai bahan tambahan di AS"}},
+  {id:"msg",level:"watch",aliases:["msg","monosodium glutamate","monosodium glutamat","mononatrium glutamat","e621"],
+    en:{name:"MSG (monosodium glutamate, E621)",cat:"Flavor enhancer",summary:"Savory flavor booster with a worse reputation than evidence.",detail:"Decades of research find no consistent harm for most people at normal amounts. A small number report sensitivity. It does flag a heavily processed, salty food.",status:"Generally recognized as safe (FDA)"},
+    ms:{name:"MSG (monosodium glutamat, E621)",cat:"Penambah perisa",summary:"Penambah perisa gurih dengan reputasi lebih buruk daripada bukti.",detail:"Penyelidikan berdekad mendapati tiada bahaya konsisten bagi kebanyakan orang pada kuantiti biasa. Sebilangan kecil melaporkan sensitiviti. Ia menandakan makanan yang terproses tinggi dan masin.",status:"Umumnya diiktiraf selamat (FDA)"}},
+  {id:"artflavor",level:"watch",aliases:["artificial flavor","artificial flavors","artificial flavoring","perisa tiruan","perisa buatan"],
+    en:{name:"Artificial flavors",cat:"Flavoring",summary:"Catch-all term hiding undisclosed lab-made flavor blends.",detail:"Not necessarily harmful, but the exact mix isn't disclosed. A sign of a more processed product; 'natural flavors' has the same gap.",status:"Allowed · contents not itemized"},
+    ms:{name:"Perisa tiruan",cat:"Perisa",summary:"Istilah umum yang menyembunyikan campuran perisa buatan makmal yang tidak didedahkan.",detail:"Tidak semestinya berbahaya, tetapi campuran tepatnya tidak didedahkan. Tanda produk yang lebih terproses; 'perisa asli' mempunyai jurang yang sama.",status:"Dibenarkan · kandungan tidak diperincikan"}},
+  {id:"carrageenan",level:"watch",aliases:["carrageenan","karagenan","e407"],
+    en:{name:"Carrageenan (E407)",cat:"Thickener",summary:"Seaweed-derived thickener with debated gut effects.",detail:"Common in dairy and plant milks. Food-grade carrageenan is allowed, but some research raises gut-inflammation questions, so some families avoid it.",status:"Allowed in U.S. · debated"},
+    ms:{name:"Karagenan (E407)",cat:"Pemekat",summary:"Pemekat daripada rumpai laut dengan kesan usus yang diperdebatkan.",detail:"Lazim dalam tenusu dan susu tumbuhan. Karagenan gred makanan dibenarkan, tetapi sesetengah kajian membangkitkan persoalan keradangan usus, jadi sesetengah keluarga mengelakkannya.",status:"Dibenarkan di AS · diperdebatkan"}},
+  {id:"phosacid",level:"watch",aliases:["phosphoric acid","asid fosforik","e338"],
+    en:{name:"Phosphoric acid (E338)",cat:"Acidifier",summary:"Tangy acid in dark sodas.",detail:"Mainly a flag for soda. High cola intake is linked to lower bone mineral density in kids — the drink itself is the bigger issue.",status:"Allowed in U.S."},
+    ms:{name:"Asid fosforik (E338)",cat:"Pengasid",summary:"Asid masam dalam minuman bergas gelap.",detail:"Terutamanya tanda untuk minuman bergas. Pengambilan kola tinggi dikaitkan dengan ketumpatan mineral tulang lebih rendah pada kanak-kanak — minuman itu sendiri isu lebih besar.",status:"Dibenarkan di AS"}},
+  {id:"bvo",level:"avoid",aliases:["brominated vegetable oil","bvo","minyak sayuran berbromin","e443"],
+    en:{name:"Brominated vegetable oil (BVO, E443)",cat:"Additive",summary:"Citrus-soda emulsifier the FDA removed in 2024.",detail:"The FDA revoked its authorization in 2024 over bromine build-up in the body. It should be gone — if you see it, skip the product.",status:"FDA: authorization revoked (2024)"},
+    ms:{name:"Minyak sayuran berbromin (BVO, E443)",cat:"Bahan tambahan",summary:"Pengemulsi minuman bergas sitrus yang dikeluarkan FDA pada 2024.",detail:"FDA menarik balik kebenarannya pada 2024 atas pengumpulan bromin dalam badan. Ia sepatutnya sudah tiada — jika anda nampak, elakkan produk itu.",status:"FDA: kebenaran ditarik balik (2024)"}},
+  {id:"tio2",level:"caution",aliases:["titanium dioxide","titanium dioksida","e171"],
+    en:{name:"Titanium dioxide (E171)",cat:"Whitener",summary:"Whitening agent banned from food in the EU.",detail:"Used to make candies and frostings bright white. The EU banned it in 2022 citing possible DNA effects; still allowed in the U.S.",status:"Banned in EU food · allowed in U.S."},
+    ms:{name:"Titanium dioksida (E171)",cat:"Pemutih",summary:"Agen pemutih yang diharamkan daripada makanan di EU.",detail:"Digunakan untuk menjadikan gula-gula dan aising putih terang. EU mengharamkannya pada 2022 atas kemungkinan kesan DNA; ia masih dibenarkan di AS.",status:"Diharamkan dalam makanan EU · dibenarkan di AS"}},
+  {id:"caffeine",level:"caution",aliases:["caffeine","guarana","added caffeine","kafein","kafein tambahan"],
+    en:{name:"Added caffeine",cat:"Stimulant",summary:"Stimulant that pediatricians say kids should avoid.",detail:"The American Academy of Pediatrics recommends no added caffeine for children. Watch for it in flavored waters, sodas and 'energy' snacks.",status:"AAP: avoid for children"},
+    ms:{name:"Kafein tambahan",cat:"Perangsang",summary:"Perangsang yang dinasihatkan pakar pediatrik supaya dielakkan kanak-kanak.",detail:"Akademi Pediatrik Amerika mengesyorkan tiada kafein tambahan untuk kanak-kanak. Perhatikannya dalam air berperisa, minuman bergas dan snek 'tenaga'.",status:"AAP: elak untuk kanak-kanak"}},
+];
+
+const LEVELS={
+  avoid:{rank:3,color:"#B23B2E",tint:"#F6E7E4",label:{en:"Avoid",ms:"Elak"}},
+  caution:{rank:2,color:"#B26A1B",tint:"#F7ECDC",label:{en:"Caution",ms:"Awas"}},
+  watch:{rank:1,color:"#4F6D8A",tint:"#E8EEF3",label:{en:"Watch",ms:"Pantau"}},
+};
+
+/* =================== state =================== */
+let LANG="ms";
+let lastRes=null;
+const T=()=>I18N[LANG];
+
+/* =================== engine (language-neutral) =================== */
+function analyze(raw){
+  const lower=(raw||"").toLowerCase();
+  if(!lower.trim()) return null;
+  const text=lower.replace(/\b(?:e|ins)[\s\-\.]?(\d{3,4})/g,"e$1"); // E/INS 3–4 digit, incl "INS 322(i)"
+  const found=[];
+  for(const item of DB){ if(item.aliases.some(a=>text.includes(a))) found.push(item); }
+  const seen=new Set();
+  const flagged=found.filter(f=> seen.has(f.id)?false:seen.add(f.id));
+  flagged.sort((a,b)=>LEVELS[b.level].rank-LEVELS[a.level].rank);
+  const tokens=text.replace(/\([^)]*\)/g,",").split(/[,;\n•]/)
+    .map(t=>t.replace(/contains \d+% or less of:?/g,"").replace(/mengandungi \d+% atau kurang(?: daripada)?:?/g,"").trim())
+    .filter(t=>t.length>1 && !/^\d+%?$/.test(t));
+  const totalRead=Math.max(tokens.length,flagged.length);
+  const maxRank=flagged.reduce((m,f)=>Math.max(m,LEVELS[f.level].rank),0);
+  return {flagged,totalRead,maxRank};
+}
+
+function localTake(res){
+  const t=T();
+  const lead = res.maxRank===3?t.take3 : res.maxRank===2?t.take2 : t.take1;
+  return lead + t.takeTail;
+}
+
+/* =================== render =================== */
+function esc(s){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+function renderResults(res){
+  if(!res){ document.getElementById("results").innerHTML=""; return; }
+  const t=T();
+  let verdict;
+  if(res.flagged.length===0) verdict={title:t.vClean,color:"#1F7A4D"};
+  else if(res.maxRank===3) verdict={title:t.vAvoid,color:"#B23B2E"};
+  else if(res.maxRank===2) verdict={title:t.vCaution,color:"#B26A1B"};
+  else verdict={title:t.vWatch,color:"#4F6D8A"};
+
+  const keyHtml = Object.entries(LEVELS).sort((a,b)=>b[1].rank-a[1].rank)
+    .map(([k,L])=>`<span class="key-item"><i style="background:${L.color}"></i> ${L.label[LANG]}</span>`).join("")
+    + `<span class="key-item"><i style="background:#1F7A4D"></i> ${t.keyClean}</span>`;
+
+  let body;
+  if(res.flagged.length===0){
+    body=`<div class="clean"><span class="clean-ic">✓</span><p>${esc(t.cleanMsg)}</p></div>`;
+  } else {
+    body=`<ul class="list">`+res.flagged.map(f=>{
+      const L=LEVELS[f.level], d=f[LANG];
+      return `<li class="item">
+        <div class="item-top"><span class="item-name">${esc(d.name)}</span>
+        <span class="badge" style="color:${L.color};background:${L.tint}">${L.label[LANG]}</span></div>
+        <div class="item-cat">${esc(d.cat)}</div>
+        <p class="item-sum">${esc(d.summary)}</p>
+        <p class="item-det">${esc(d.detail)}</p>
+        <div class="item-status" style="border-color:${L.color};color:${L.color}">${esc(d.status)}</div>
+      </li>`;
+    }).join("")+`</ul>`;
+  }
+
+  const insight = res.flagged.length>0
+    ? `<div class="insight"><div class="insight-box"><div class="insight-h">${esc(t.insightH)}</div><p>${esc(localTake(res))}</p></div></div>`
+    : "";
+
+  document.getElementById("results").innerHTML=`<section class="panel">
+    <div class="panel-title">${esc(t.panelTitle)}</div>
+    <div class="rule rule-xl"></div>
+    <div><span class="verdict-txt" style="color:${verdict.color}">${esc(verdict.title)}</span></div>
+    <div class="counts"><span><b style="color:${verdict.color}">${res.flagged.length}</b> ${esc(t.flagged)}</span>
+      <span class="counts-sep">·</span><span>${res.totalRead} ${esc(t.read)}</span></div>
+    <div class="rule rule-lg"></div>
+    ${body}
+    <div class="rule rule-lg"></div>
+    <div class="key">${keyHtml}</div>
+    ${insight}
+  </section>`;
+}
+
+function showError(msg){ document.getElementById("errorBox").innerHTML=`<div class="error">${esc(msg)}</div>`; }
+function clearOut(){ document.getElementById("results").innerHTML=""; document.getElementById("errorBox").innerHTML=""; lastRes=null; }
+
+/* =================== language =================== */
+function buildChips(){
+  const chips=document.getElementById("chips"); chips.innerHTML="";
+  T().examples.forEach(ex=>{
+    const b=document.createElement("button"); b.className="chip"; b.textContent=ex.name;
+    b.onclick=()=>{ setTab(false); document.getElementById("ta").value=ex.text; document.getElementById("errorBox").innerHTML=""; lastRes=analyze(ex.text); renderResults(lastRes); };
+    chips.appendChild(b);
+  });
+}
+
+function applyLang(){
+  const t=T();
+  document.documentElement.lang=LANG;
+  document.getElementById("tag").textContent=t.tag;
+  document.getElementById("tab-scan").textContent=t.scan;
+  document.getElementById("tab-paste").textContent=t.paste;
+  document.getElementById("shutterTxt").textContent=" "+t.shutter;
+  document.getElementById("hint").innerHTML=t.hint;
+  document.getElementById("thumb").alt=t.thumbAlt;
+  document.getElementById("ta").placeholder=t.placeholder;
+  document.getElementById("checkBtn").textContent=t.check;
+  document.getElementById("exLabel").textContent=t.noLabel;
+  document.getElementById("foot").innerHTML=t.foot;
+  buildChips();
+  renderResults(lastRes);
+  document.querySelectorAll("#lang button").forEach(b=>b.classList.toggle("on", b.dataset.l===LANG));
+}
+
+document.querySelectorAll("#lang button").forEach(b=>{
+  b.onclick=()=>{ LANG=b.dataset.l; applyLang(); };
+});
+
+/* =================== tabs =================== */
+const tabScan=document.getElementById("tab-scan"), tabPaste=document.getElementById("tab-paste");
+const paneScan=document.getElementById("pane-scan"), panePaste=document.getElementById("pane-paste");
+function setTab(scan){
+  tabScan.classList.toggle("on",scan); tabPaste.classList.toggle("on",!scan);
+  paneScan.classList.toggle("on",scan); panePaste.classList.toggle("on",!scan);
+}
+tabScan.onclick=()=>setTab(true);
+tabPaste.onclick=()=>setTab(false);
+
+/* =================== paste =================== */
+document.getElementById("checkBtn").onclick=()=>{
+  clearOut();
+  lastRes=analyze(document.getElementById("ta").value);
+  if(!lastRes){ showError(T().errEmpty); return; }
+  renderResults(lastRes);
+};
+
+/* =================== scan (free on-device OCR) =================== */
+const fileInput=document.getElementById("file");
+const shutterBtn=document.getElementById("shutterBtn");
+const thumb=document.getElementById("thumb");
+const ocrProgress=document.getElementById("ocrProgress");
+const ocrBar=document.getElementById("ocrBar");
+const ocrLabel=document.getElementById("ocrLabel");
+
+shutterBtn.onclick=()=>fileInput.click();
+
+fileInput.onchange=async(e)=>{
+  const file=e.target.files&&e.target.files[0];
+  if(!file) return;
+  clearOut();
+  shutterBtn.disabled=true; thumb.style.display="none";
+  ocrProgress.style.display="flex"; ocrBar.style.width="4%"; ocrLabel.textContent=T().ocrPrep;
+  try{
+    const prepped=await prepImage(file);
+    thumb.src=prepped.preview; thumb.style.display="block";
+    const worker=await Tesseract.createWorker("eng",1,{
+      logger:m=>{
+        if(m.status==="recognizing text"){ ocrLabel.textContent=T().ocrRead; ocrBar.style.width=Math.max(8,Math.round(m.progress*100))+"%"; }
+        else { ocrLabel.textContent=T().ocrPrep; }
+      }
+    });
+    const {data}=await worker.recognize(prepped.canvas);
+    await worker.terminate();
+    ocrBar.style.width="100%";
+    const text=(data.text||"").replace(/\s+/g," ").trim();
+    lastRes=analyze(text);
+    if(!lastRes || (lastRes.flagged.length===0 && text.length<12)){
+      lastRes=null; showError(T().errNoRead);
+    } else {
+      document.getElementById("ta").value=text;
+      renderResults(lastRes);
+    }
+  }catch(err){
+    showError(T().errRun);
+  }finally{
+    shutterBtn.disabled=false;
+    setTimeout(()=>{ ocrProgress.style.display="none"; },600);
+    fileInput.value="";
+  }
+};
+
+function prepImage(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{
+        const maxDim=1600; let {width,height}=img;
+        const scale=Math.min(2, maxDim/Math.max(width,height));
+        width=Math.round(width*scale); height=Math.round(height*scale);
+        const canvas=document.createElement("canvas"); canvas.width=width; canvas.height=height;
+        const ctx=canvas.getContext("2d"); ctx.drawImage(img,0,0,width,height);
+        const d=ctx.getImageData(0,0,width,height), px=d.data;
+        for(let i=0;i<px.length;i+=4){ let g=0.299*px[i]+0.587*px[i+1]+0.114*px[i+2]; g=(g-128)*1.25+128; g=g<0?0:g>255?255:g; px[i]=px[i+1]=px[i+2]=g; }
+        ctx.putImageData(d,0,0);
+        resolve({canvas, preview:canvas.toDataURL("image/jpeg",0.85)});
+      };
+      img.onerror=reject; img.src=ev.target.result;
+    };
+    reader.onerror=reject; reader.readAsDataURL(file);
+  });
+}
+
+/* init */
+applyLang();
+</script>
+</body>
+</html>
