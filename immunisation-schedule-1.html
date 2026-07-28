@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>National Immunisation Schedule — Child Record</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0A3B3F;--ink-soft:#4C6B6D;--paper:#E6EEE9;--card:#FFFFFF;
+    --line:#C9D9D2;--line-soft:#E2EBE6;--teal:#0E8C97;
+    --due:#B71C33;--soon:#9A6400;--done:#1C7355;--radius:3px;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:16px;line-height:1.55;
+    background-image:
+      linear-gradient(rgba(255,255,255,.5) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(255,255,255,.5) 1px,transparent 1px);
+    background-size:28px 28px;
+  }
+  .wrap{max-width:940px;margin:0 auto;padding:0 20px 80px;}
+
+  .masthead{border-bottom:3px double var(--ink);padding:44px 0 20px;margin-bottom:26px;}
+  .crest{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--ink-soft);
+    display:flex;align-items:center;gap:10px;margin-bottom:14px;
+  }
+  .crest::after{content:"";flex:1;height:1px;background:var(--line);}
+  .masthead h1{
+    font-family:'Archivo',sans-serif;font-weight:800;font-size:clamp(32px,6.4vw,58px);
+    line-height:.94;letter-spacing:-.025em;text-transform:uppercase;margin:0;
+  }
+  .masthead h1 em{font-style:normal;color:var(--teal);}
+  .masthead p{margin:14px 0 0;max-width:48ch;color:var(--ink-soft);font-size:15px;}
+
+  .setup{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px;display:grid;grid-template-columns:repeat(2,1fr);gap:20px 26px;
+    align-items:start;box-shadow:0 1px 0 rgba(10,59,63,.06);
+  }
+  .field{display:flex;flex-direction:column;gap:7px;}
+  .field label{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-soft);
+  }
+  .field .plain{text-transform:none;letter-spacing:0;}
+  .field input,.field select{
+    font-family:'IBM Plex Mono',monospace;font-size:15px;color:var(--ink);
+    background:#F7FAF8;border:1px solid var(--line);border-radius:var(--radius);
+    padding:11px 12px;width:100%;
+  }
+  .field input:focus-visible,.field select:focus-visible,
+  button:focus-visible,a:focus-visible{outline:2px solid var(--teal);outline-offset:2px;}
+  .hint{font-size:13px;color:var(--ink-soft);margin:0;}
+
+  .seg{display:flex;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  .seg button{
+    flex:1;background:#F7FAF8;border:none;border-right:1px solid var(--line);
+    padding:11px 6px;cursor:pointer;color:var(--ink-soft);
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;
+    text-transform:uppercase;transition:background .15s,color .15s;
+  }
+  .seg button:last-child{border-right:none;}
+  .seg button[aria-pressed="true"]{background:var(--ink);color:#fff;}
+
+  .readout{
+    grid-column:1 / -1;border-top:1px solid var(--line-soft);padding-top:20px;
+    display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 34px;
+  }
+  .age-figure{display:flex;align-items:baseline;gap:8px;}
+  .age-num{
+    font-family:'Archivo',sans-serif;font-weight:800;font-size:56px;line-height:.85;
+    letter-spacing:-.03em;font-variant-numeric:tabular-nums;
+  }
+  .age-unit{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--ink-soft);
+  }
+  .progress-block{flex:1;min-width:220px;}
+  .progress-line{
+    display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;
+    font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);
+    margin-bottom:7px;
+  }
+  .bar{height:8px;background:var(--line-soft);border-radius:99px;overflow:hidden;}
+  .bar span{display:block;height:100%;background:var(--done);width:0;transition:width .45s cubic-bezier(.4,0,.2,1);}
+
+  .next-band{background:var(--ink);color:#EAF3F0;border-radius:var(--radius);padding:24px;margin-top:26px;}
+  .next-band .eyebrow{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.22em;
+    text-transform:uppercase;color:#8FB8B5;margin-bottom:10px;
+  }
+  .next-band h2{
+    font-family:'Archivo',sans-serif;font-weight:800;font-size:clamp(24px,4.5vw,36px);
+    line-height:1.02;letter-spacing:-.02em;margin:0 0 6px;color:#fff;
+  }
+  .next-when{font-family:'IBM Plex Mono',monospace;font-size:13px;color:#9DC6C2;}
+  .next-list{margin:14px 0 0;padding:0;list-style:none;}
+  .next-list li{
+    padding:7px 0;border-top:1px solid rgba(255,255,255,.14);
+    display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  }
+  .next-list .nm{font-weight:600;}
+  .next-list .dz{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;color:#9DC6C2;
+  }
+  .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px;}
+  .actions a,.actions button{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.13em;
+    text-transform:uppercase;padding:11px 15px;border-radius:var(--radius);
+    border:1px solid rgba(255,255,255,.4);background:none;color:#fff;
+    cursor:pointer;text-decoration:none;transition:background .15s;
+  }
+  .actions a:hover,.actions button:hover{background:rgba(255,255,255,.12);}
+  .actions .primary{background:#fff;color:var(--ink);border-color:#fff;font-weight:600;}
+  .actions .primary:hover{background:#DCEAE6;}
+  .band-note{
+    margin:14px 0 0;font-size:13px;color:#8FB8B5;max-width:56ch;
+  }
+
+  .section-head{display:flex;align-items:baseline;gap:12px;margin:44px 0 8px;}
+  .section-head h2{
+    font-family:'Archivo',sans-serif;font-weight:600;font-size:14px;
+    letter-spacing:.2em;text-transform:uppercase;margin:0;
+  }
+  .section-head .rule{flex:1;height:1px;background:var(--line);}
+  .lede{margin:0 0 18px;font-size:13px;color:var(--ink-soft);max-width:60ch;}
+
+  .visits{list-style:none;margin:0;padding:0;position:relative;}
+  .visits::before{content:"";position:absolute;left:63px;top:10px;bottom:10px;width:1px;background:var(--line);}
+  .visit{display:grid;grid-template-columns:64px 1fr;gap:0 26px;margin-bottom:14px;}
+  .marker{position:relative;padding-top:16px;text-align:right;}
+  .marker b{
+    display:block;font-family:'Archivo',sans-serif;font-weight:800;font-size:24px;
+    line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;
+  }
+  .marker span{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--ink-soft);
+  }
+  .marker::after{
+    content:"";position:absolute;right:-27px;top:22px;width:9px;height:9px;
+    border-radius:50%;background:var(--paper);border:1.5px solid var(--line);
+  }
+  .visit[data-state="due"] .marker::after,
+  .visit[data-state="overdue"] .marker::after{background:var(--due);border-color:var(--due);}
+  .visit[data-state="done"] .marker::after{background:var(--done);border-color:var(--done);}
+  .visit[data-state="assumed"] .marker::after{background:var(--paper);border-color:var(--done);}
+
+  .card{
+    background:var(--card);border:1px solid var(--line);border-left:3px solid var(--line);
+    border-radius:var(--radius);padding:16px 18px;
+  }
+  .visit[data-state="due"] .card,
+  .visit[data-state="overdue"] .card{border-left-color:var(--due);}
+  .visit[data-state="done"] .card{border-left-color:var(--done);background:#FAFCFB;}
+  .visit[data-state="assumed"] .card{border-left-color:#9EC4B5;background:#FAFCFB;}
+
+  .card-top{
+    display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
+    gap:8px 14px;margin-bottom:12px;
+  }
+  .visit-date{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500;}
+  .visit-date small{color:var(--ink-soft);font-weight:400;}
+  .pill{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;
+    letter-spacing:.14em;text-transform:uppercase;padding:4px 9px;
+    border-radius:99px;border:1px solid currentColor;
+  }
+  .pill.due,.pill.overdue{color:var(--due);}
+  .pill.soon{color:var(--soon);}
+  .pill.done{color:var(--done);}
+  .pill.assumed{color:var(--ink-soft);}
+  .pill.idle{color:var(--ink-soft);}
+
+  .dose{
+    display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;
+    padding:11px 0;border-top:1px dotted var(--line);
+  }
+  .dose:first-of-type{border-top:none;padding-top:2px;}
+  .dose-main{flex:1;min-width:190px;}
+  .dose-name{font-family:'Archivo',sans-serif;font-weight:600;font-size:16px;letter-spacing:-.01em;}
+  .dose-meta{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--ink-soft);margin-top:3px;
+  }
+  .price{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);white-space:nowrap;}
+  .price.free{color:var(--done);}
+  .tag{
+    display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10px;
+    letter-spacing:.1em;text-transform:uppercase;color:var(--teal);
+    border:1px solid currentColor;border-radius:2px;padding:1px 5px;margin-left:6px;
+  }
+  .mark{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;background:none;border:1px solid var(--line);
+    color:var(--ink);border-radius:var(--radius);padding:7px 12px;cursor:pointer;
+    transition:border-color .15s;
+  }
+  .mark:hover{border-color:var(--ink);}
+  .stamp{
+    display:inline-flex;flex-direction:column;align-items:center;
+    font-family:'IBM Plex Mono',monospace;color:var(--done);
+    border:1.5px solid currentColor;border-radius:2px;padding:3px 10px 4px;
+    transform:rotate(-2.5deg);line-height:1.25;cursor:pointer;background:none;
+    animation:thud .28s cubic-bezier(.2,1.4,.5,1);
+  }
+  .stamp b{font-size:10px;font-weight:600;letter-spacing:.22em;}
+  .stamp span{font-size:11px;letter-spacing:.04em;opacity:.85;}
+  .stamp.assumed{border-style:dashed;color:var(--ink-soft);animation:none;}
+  @keyframes thud{from{transform:rotate(-2.5deg) scale(1.5);opacity:0;}to{transform:rotate(-2.5deg) scale(1);opacity:1;}}
+  .dose.given .dose-name{color:var(--ink-soft);}
+
+  .empty{
+    background:var(--card);border:1px dashed var(--line);border-radius:var(--radius);
+    padding:26px;text-align:center;color:var(--ink-soft);font-size:15px;
+  }
+
+  .cost{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px;}
+  .cost-total{
+    display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+    padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid var(--line-soft);
+  }
+  .cost-total b{font-family:'Archivo',sans-serif;font-weight:800;font-size:38px;letter-spacing:-.02em;line-height:1;}
+  .cost-total span{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-soft);
+  }
+  .cost p{margin:0 0 10px;font-size:14px;color:var(--ink-soft);}
+  .cost p:last-child{margin-bottom:0;}
+  .cost table{width:100%;border-collapse:collapse;margin-bottom:14px;}
+  .cost th,.cost td{text-align:left;padding:7px 0;border-bottom:1px dotted var(--line);font-size:14px;}
+  .cost th{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-soft);font-weight:400;
+  }
+  .cost td:last-child,.cost th:last-child{text-align:right;font-family:'IBM Plex Mono',monospace;}
+
+  .glossary{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:1px;
+    background:var(--line);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+  }
+  .entry{background:var(--card);padding:16px 18px;}
+  .entry h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:14px;margin:0 0 4px;}
+  .entry .against{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--teal);margin-bottom:7px;
+  }
+  .entry p{margin:0;font-size:14px;color:var(--ink-soft);line-height:1.5;}
+
+  dialog{
+    border:1px solid var(--line);border-radius:var(--radius);padding:22px;
+    max-width:560px;width:92%;background:var(--card);color:var(--ink);
+  }
+  dialog::backdrop{background:rgba(10,59,63,.4);}
+  dialog textarea{
+    width:100%;height:220px;font-family:'IBM Plex Mono',monospace;font-size:11px;
+    border:1px solid var(--line);border-radius:var(--radius);padding:10px;resize:vertical;
+  }
+  dialog h3{font-family:'Archivo',sans-serif;font-size:16px;margin:0 0 8px;}
+  dialog p{font-size:14px;color:var(--ink-soft);margin:0 0 12px;}
+  dialog .close{
+    margin-top:12px;font-family:'IBM Plex Mono',monospace;font-size:11px;
+    letter-spacing:.13em;text-transform:uppercase;padding:9px 14px;
+    border:1px solid var(--line);border-radius:var(--radius);background:none;cursor:pointer;
+  }
+
+  footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--line);font-size:13px;color:var(--ink-soft);}
+  footer button{background:none;border:none;padding:0;font:inherit;color:var(--due);text-decoration:underline;cursor:pointer;}
+
+  @media (max-width:620px){
+    .setup{grid-template-columns:1fr;}
+    .visits::before{left:47px;}
+    .visit{grid-template-columns:48px 1fr;gap:0 20px;}
+    .marker::after{right:-24px;}
+    .marker b{font-size:20px;}
+    .actions a,.actions button{flex:1;text-align:center;}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="crest">Ministry of Health Malaysia</div>
+    <h1>National<br><em>Immunisation</em><br>Schedule</h1>
+    <p>Enter a birth date and the schedule becomes your child's own appointment dates, ready to send to your calendar. Nothing is uploaded — the record stays on this device.</p>
+  </header>
+
+  <section class="setup">
+    <div class="field">
+      <label for="name">Child's name <span class="plain">(optional)</span></label>
+      <input type="text" id="name" placeholder="Used in reminders" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="dob">Date of birth</label>
+      <input type="date" id="dob">
+    </div>
+    <div class="field">
+      <label>Sex</label>
+      <div class="seg" id="segSex" role="group" aria-label="Sex">
+        <button type="button" data-sex="female" aria-pressed="false">Girl</button>
+        <button type="button" data-sex="male" aria-pressed="false">Boy</button>
+      </div>
+      <p class="hint">HPV at age 13 is given to girls only.</p>
+    </div>
+    <div class="field">
+      <label for="region">Where you live</label>
+      <select id="region">
+        <option value="peninsular">Peninsular Malaysia / Labuan / Putrajaya</option>
+        <option value="sabah">Sabah</option>
+        <option value="sarawak">Sarawak</option>
+      </select>
+      <p class="hint">Sabah adds measles at 6 months; Sarawak adds Japanese encephalitis.</p>
+    </div>
+    <div class="field" style="grid-column:1/-1">
+      <label>Where you'll go</label>
+      <div class="seg" id="segCare" role="group" aria-label="Type of clinic">
+        <button type="button" data-care="gov" aria-pressed="true">Government clinic — free</button>
+        <button type="button" data-care="private" aria-pressed="false">Private clinic — estimate</button>
+      </div>
+    </div>
+
+    <div class="readout" id="readout" hidden>
+      <div class="age-figure">
+        <span class="age-num" id="ageNum">—</span>
+        <span class="age-unit" id="ageUnit">old</span>
+      </div>
+      <div class="progress-block">
+        <div class="progress-line">
+          <span id="progressLabel">0 of 0 doses done</span>
+          <span id="progressPct">0%</span>
+        </div>
+        <div class="bar"><span id="bar"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="next-band" id="nextBand" hidden></section>
+
+  <div class="section-head">
+    <h2>Every visit</h2>
+    <div class="rule"></div>
+  </div>
+  <p class="lede" id="visitsLede">Doses whose date has already passed are marked as given. Tap a stamp to correct one your child actually missed.</p>
+  <ul class="visits" id="visits"></ul>
+
+  <div class="section-head">
+    <h2>What it costs</h2>
+    <div class="rule"></div>
+  </div>
+  <section class="cost" id="cost"></section>
+
+  <div class="section-head">
+    <h2>What each vaccine is for</h2>
+    <div class="rule"></div>
+  </div>
+  <div class="glossary" id="glossary"></div>
+
+  <footer>
+    <p>Schedule as published by the Ministry of Health Malaysia. Prices are indicative 2025–26 private-clinic ranges from published Malaysian price guides — confirm with the clinic before you go. The clinic decides the final timing: bring your child's health record book to every visit and follow the nurse's dates if they differ.</p>
+    <p><button id="reset" type="button">Clear this record</button></p>
+  </footer>
+</div>
+
+<dialog id="fallback">
+  <h3>Copy the calendar file</h3>
+  <p>Your browser blocked the download. Copy this text, save it as <strong>immunisation.ics</strong>, then open it — or upload it to Google Drive and open it from there.</p>
+  <textarea id="fallbackText" readonly></textarea>
+  <button class="close" type="button" onclick="document.getElementById('fallback').close()">Close</button>
+</dialog>
+
+<script>
+const VACCINES = {
+  bcg:   {name:'BCG', against:'Tuberculosis', price:null,
+          desc:'Bacille Calmette–Guérin. Given once, in the upper arm, before the baby leaves hospital.'},
+  hepb:  {name:'Hepatitis B', against:'Hepatitis B', price:[60,90],
+          desc:'The birth dose. Protection is completed by the hepatitis B component inside the 6-in-1 vaccine.'},
+  hexa:  {name:'DTaP-IPV-Hep B-Hib', against:'Six diseases in one', price:[190,230],
+          desc:'The 6-in-1: diphtheria, tetanus, pertussis (whooping cough), polio, hepatitis B and Haemophilus influenzae type B.'},
+  measles:{name:'Measles', against:'Measles', price:null,
+          desc:'An extra early measles dose given only in Sabah, where the risk of infection before nine months is higher.'},
+  mmr:   {name:'MMR', against:'Measles, mumps, rubella', price:[95,105],
+          desc:'The combined measles, mumps and rubella vaccine. Two doses, three months apart.'},
+  pcv:   {name:'Pneumococcal (PCV)', against:'Pneumococcal disease', price:[200,340],
+          desc:'Synflorix or Prevenar 13. Protects against serious pneumococcal infection including meningitis and pneumonia.'},
+  je:    {name:'Japanese encephalitis', against:'Japanese encephalitis', price:null,
+          desc:'Given in Sarawak only, where the virus is carried by mosquitoes in rural and rice-growing areas.'},
+  dt:    {name:'DT', against:'Diphtheria, tetanus', price:null,
+          desc:'A booster in Year One of primary school that tops up diphtheria and tetanus protection.'},
+  hpv:   {name:'HPV', against:'Cervical cancer', price:[180,570],
+          desc:'Given to girls in Form One, or at 13 if not in school. Prevents the HPV infections that cause cervical cancer.'},
+  tt:    {name:'Tetanus toxoid', against:'Tetanus', price:null,
+          desc:'A booster in Form Three that raises tetanus antibody levels for the years ahead.'}
+};
+
+const SCHEDULE = [
+  {at:0,  unit:'m', label:'At birth', doses:[
+    {v:'bcg',  dose:'Single dose'},
+    {v:'hepb', dose:'Birth dose'}]},
+  {at:2,  unit:'m', doses:[{v:'hexa', dose:'Dose 1'}]},
+  {at:3,  unit:'m', doses:[{v:'hexa', dose:'Dose 2'}]},
+  {at:4,  unit:'m', doses:[{v:'pcv',  dose:'Dose 1'}]},
+  {at:5,  unit:'m', doses:[{v:'hexa', dose:'Dose 3'}]},
+  {at:6,  unit:'m', doses:[
+    {v:'pcv',     dose:'Dose 2'},
+    {v:'measles', dose:'Single dose', region:'sabah', tag:'Sabah only'}]},
+  {at:9,  unit:'m', doses:[
+    {v:'mmr', dose:'Dose 1'},
+    {v:'je',  dose:'Dose 1', region:'sarawak', tag:'Sarawak only'}]},
+  {at:12, unit:'m', doses:[{v:'mmr', dose:'Dose 2'}]},
+  {at:15, unit:'m', doses:[{v:'pcv', dose:'Booster'}]},
+  {at:18, unit:'m', doses:[{v:'hexa',dose:'Booster'}]},
+  {at:21, unit:'m', doses:[{v:'je',  dose:'Booster', region:'sarawak', tag:'Sarawak only'}]},
+  {at:7,  unit:'y', note:'Year One, at school', doses:[{v:'dt', dose:'Booster'}]},
+  {at:13, unit:'y', note:'Form One, at school', doses:[{v:'hpv',dose:'Single dose', sex:'female', tag:'Girls'}]},
+  {at:15, unit:'y', note:'Form Three, at school', doses:[{v:'tt', dose:'Booster'}]}
+];
+
+let state = {name:'', dob:'', sex:'', region:'peninsular', care:'gov', given:{}, skipped:{}};
+const KEY = 'immunisation-record-v3';
+
+async function load(){
+  try{
+    const r = await window.storage.get(KEY);
+    if(r && r.value) state = Object.assign(state, JSON.parse(r.value));
+  }catch(e){}
+  if(!state.skipped) state.skipped={};
+  Object.keys(state.given).forEach(k=>{
+    if(typeof state.given[k]==='string') state.given[k]={on:state.given[k],auto:false};
+  });
+  document.getElementById('name').value = state.name || '';
+  document.getElementById('dob').value  = state.dob || '';
+  document.getElementById('region').value = state.region;
+  refresh();
+}
+async function save(){ try{ await window.storage.set(KEY, JSON.stringify(state)); }catch(e){} }
+
+/* dates */
+const pad=n=>String(n).padStart(2,'0');
+const isoLocal=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+function addMonths(iso,n){
+  const d=new Date(iso+'T00:00:00'), day=d.getDate();
+  d.setDate(1); d.setMonth(d.getMonth()+n);
+  d.setDate(Math.min(day,new Date(d.getFullYear(),d.getMonth()+1,0).getDate()));
+  return d;
+}
+const startOfToday=()=>{const t=new Date();t.setHours(0,0,0,0);return t;};
+const fmt=d=>d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+const DAY=86400000;
+function relative(t){
+  const days=Math.round((t-startOfToday())/DAY);
+  if(days===0) return 'today';
+  const ahead=days>0, n=Math.abs(days);
+  let p;
+  if(n<14) p=n+(n===1?' day':' days');
+  else if(n<60) p=Math.round(n/7)+' weeks';
+  else if(n<730) p=Math.round(n/30.4)+' months';
+  else p=(n/365.25).toFixed(1).replace('.0','')+' years';
+  return ahead?'in '+p:p+' ago';
+}
+function ageParts(iso){
+  if(!iso) return null;
+  const b=new Date(iso+'T00:00:00'), t=startOfToday();
+  if(isNaN(b)) return null;
+  let m=(t.getFullYear()-b.getFullYear())*12+(t.getMonth()-b.getMonth());
+  if(t.getDate()<b.getDate()) m--;
+  if(m<0) return null;
+  if(m<24) return {num:m, unit:m===1?'month old':'months old'};
+  return {num:Math.floor(m/12), unit:'years old'};
+}
+
+/* model */
+function activeDoses(v){
+  return v.doses.filter(d=>(!d.region||d.region===state.region)&&(!d.sex||!state.sex||d.sex===state.sex));
+}
+const doseId=(v,d)=>v.unit+v.at+':'+d.v+':'+d.dose;
+const visitList=()=>SCHEDULE.map(v=>Object.assign({},v,{doses:activeDoses(v)})).filter(v=>v.doses.length);
+const monthsOf=v=>v.unit==='y'?v.at*12:v.at;
+const ageLabel=v=>v.at===0?'newborn':v.at+(v.unit==='y'?(v.at===1?' year':' years'):' months')+' old';
+const childName=()=>state.name.trim()||'Baby';
+const dueDate=v=>addMonths(state.dob,monthsOf(v));
+const isDone=v=>v.doses.every(d=>state.given[doseId(v,d)]);
+
+/* assume anything already past was given */
+function autofill(){
+  if(!ageParts(state.dob)) return;
+  const today=startOfToday();
+  visitList().forEach(v=>{
+    const due=dueDate(v);
+    if(due>=today) return;
+    v.doses.forEach(d=>{
+      const id=doseId(v,d);
+      if(state.given[id]||state.skipped[id]) return;
+      state.given[id]={on:isoLocal(due),auto:true};
+    });
+  });
+}
+function refresh(){ autofill(); save(); render(); }
+
+const futureVisits=()=>visitList().filter(v=>!isDone(v));
+const nextVisit=()=>ageParts(state.dob)?(futureVisits()[0]||null):null;
+
+/* calendar */
+function localStamp(d,h,mi){return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'T'+pad(h)+pad(mi)+'00';}
+function utcStamp(d){
+  return d.getUTCFullYear()+pad(d.getUTCMonth()+1)+pad(d.getUTCDate())+'T'+
+         pad(d.getUTCHours())+pad(d.getUTCMinutes())+'00Z';
+}
+function fold(line){
+  const out=[];
+  while(line.length>72){out.push(line.slice(0,72));line=' '+line.slice(72);}
+  out.push(line);return out.join('\r\n');
+}
+const esc=s=>s.replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+
+const visitTitle=v=>'Immunisation — '+childName()+' ('+ageLabel(v)+')';
+function visitBody(v){
+  const lines=v.doses.map(d=>'• '+VACCINES[d.v].name+' — '+d.dose);
+  lines.push('','Bring your child\'s health record book.');
+  lines.push(state.care==='gov'
+    ? 'Free at any government health clinic for Malaysian children.'
+    : 'Estimated cost: '+v.doses.map(d=>VACCINES[d.v].name+' '+priceText(d.v)).join(', '));
+  return lines.join('\n');
+}
+function buildIcs(visits){
+  const now=utcStamp(new Date());
+  const ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Immunisation Schedule//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH'];
+  visits.forEach((v,i)=>{
+    const d=dueDate(v);
+    ics.push('BEGIN:VEVENT');
+    ics.push('UID:immunisation-'+v.unit+v.at+'-'+i+'-'+Date.now()+'@local');
+    ics.push('DTSTAMP:'+now);
+    ics.push('DTSTART:'+localStamp(d,9,0));
+    ics.push('DTEND:'+localStamp(d,9,45));
+    ics.push(fold('SUMMARY:'+esc(visitTitle(v))));
+    ics.push(fold('DESCRIPTION:'+esc(visitBody(v))));
+    ics.push('LOCATION:'+(state.care==='gov'?'Government health clinic':'Clinic'));
+    ics.push('BEGIN:VALARM','TRIGGER:-P7D','ACTION:DISPLAY',
+             fold('DESCRIPTION:'+esc('Immunisation next week — '+childName())),'END:VALARM');
+    ics.push('BEGIN:VALARM','TRIGGER:-PT15H','ACTION:DISPLAY',
+             fold('DESCRIPTION:'+esc('Immunisation tomorrow at 9am — bring the health record book')),'END:VALARM');
+    ics.push('END:VEVENT');
+  });
+  ics.push('END:VCALENDAR');
+  return ics.join('\r\n');
+}
+function downloadIcs(visits,filename){
+  const text=buildIcs(visits);
+  try{
+    const blob=new Blob([text],{type:'text/calendar;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=filename;document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1500);
+  }catch(e){
+    document.getElementById('fallbackText').value=text;
+    document.getElementById('fallback').showModal();
+  }
+}
+function googleCalUrl(v){
+  const d=dueDate(v);
+  const s=new Date(d);s.setHours(9,0,0,0);
+  const e=new Date(d);e.setHours(9,45,0,0);
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE'+
+    '&text='+encodeURIComponent(visitTitle(v))+
+    '&dates='+utcStamp(s)+'/'+utcStamp(e)+
+    '&details='+encodeURIComponent(visitBody(v))+
+    '&location='+encodeURIComponent('Government health clinic');
+}
+function whatsappUrl(v){
+  const d=dueDate(v);
+  const msg='*Immunisation — '+childName()+'*\n'+
+    fmt(d)+' ('+relative(d)+')\n'+
+    'Age at visit: '+ageLabel(v)+'\n\n'+
+    v.doses.map(x=>'• '+VACCINES[x.v].name+' — '+x.dose).join('\n')+
+    '\n\nPlease bring the health record book.';
+  return 'https://wa.me/?text='+encodeURIComponent(msg);
+}
+
+/* cost */
+function priceText(v){
+  const p=VACCINES[v].price;
+  if(state.care==='gov') return 'Free';
+  return p?('RM'+p[0]+'–'+p[1]):'Ask clinic';
+}
+function costSummary(){
+  let lo=0,hi=0,unknown=0,doses=0;
+  futureVisits().forEach(v=>v.doses.forEach(d=>{
+    if(state.given[doseId(v,d)]) return;
+    doses++;
+    const p=VACCINES[d.v].price;
+    if(p){lo+=p[0];hi+=p[1];} else unknown++;
+  }));
+  return {lo,hi,unknown,doses};
+}
+
+/* render */
+function render(){
+  const visits=visitList(), hasDob=!!ageParts(state.dob), today=startOfToday();
+
+  document.querySelectorAll('#segSex button').forEach(b=>
+    b.setAttribute('aria-pressed',String(b.dataset.sex===state.sex)));
+  document.querySelectorAll('#segCare button').forEach(b=>
+    b.setAttribute('aria-pressed',String(b.dataset.care===state.care)));
+
+  const readout=document.getElementById('readout');
+  readout.hidden=!hasDob;
+  let assumed=0;
+  if(hasDob){
+    const a=ageParts(state.dob);
+    document.getElementById('ageNum').textContent=a.num;
+    document.getElementById('ageUnit').textContent=a.unit;
+    let total=0,done=0;
+    visits.forEach(v=>v.doses.forEach(d=>{
+      total++;
+      const g=state.given[doseId(v,d)];
+      if(g){done++; if(g.auto) assumed++;}
+    }));
+    const pct=total?Math.round(done/total*100):0;
+    document.getElementById('progressLabel').textContent=
+      done+' of '+total+' doses done'+(assumed?' · '+assumed+' assumed':'');
+    document.getElementById('progressPct').textContent=pct+'%';
+    document.getElementById('bar').style.width=pct+'%';
+  }
+
+  /* next visit + calendar actions */
+  const band=document.getElementById('nextBand');
+  const nv=nextVisit(), pending=futureVisits();
+  band.hidden=!nv;
+  if(nv){
+    const d=dueDate(nv);
+    band.innerHTML=
+      '<div class="eyebrow">Next appointment</div>'+
+      '<h2>'+fmt(d)+'</h2>'+
+      '<div class="next-when">'+relative(d)+' · '+childName()+' will be '+ageLabel(nv)+
+        (nv.note?' · '+nv.note:'')+'</div>'+
+      '<ul class="next-list">'+nv.doses.map(x=>
+        '<li><span class="nm">'+VACCINES[x.v].name+'</span>'+
+        '<span class="dz">'+x.dose+' · '+priceText(x.v)+'</span></li>').join('')+'</ul>'+
+      '<div class="actions">'+
+        '<button class="primary" type="button" data-act="ics-all">Add all '+pending.length+' to calendar</button>'+
+        '<a href="'+googleCalUrl(nv)+'" target="_blank" rel="noopener">This one in Google Calendar</a>'+
+        '<a href="'+whatsappUrl(nv)+'" target="_blank" rel="noopener">Send on WhatsApp</a>'+
+      '</div>'+
+      '<p class="band-note">The calendar file covers every remaining appointment through age '+
+        pending[pending.length-1].at+' '+(pending[pending.length-1].unit==='y'?'years':'months')+
+        ', each at 9am with reminders a week before and the evening before. Visits already past are left out.</p>';
+  }
+
+  /* timeline */
+  const list=document.getElementById('visits');
+  list.innerHTML='';
+  visits.forEach(v=>{
+    const due=hasDob?dueDate(v):null;
+    const doses=v.doses.map(d=>({d:d,id:doseId(v,d),g:state.given[doseId(v,d)]}));
+    const allGiven=doses.every(x=>x.g);
+    const allAuto=allGiven&&doses.every(x=>x.g.auto);
+    let status='idle',pillText='Scheduled';
+    if(allGiven){
+      status=allAuto?'assumed':'done';
+      pillText=allAuto?'Assumed given':'Given';
+    } else if(hasDob){
+      const days=Math.round((due-today)/DAY);
+      if(days<-30){status='overdue';pillText='Missed';}
+      else if(days<=0){status='due';pillText='Due now';}
+      else if(days<=30){status='soon';pillText='Coming up';}
+    }
+    const markerUnit=v.unit==='y'?(v.at===1?'year':'years'):(v.at===0?'birth':'months');
+    const li=document.createElement('li');
+    li.className='visit'; li.dataset.state=status;
+    li.innerHTML=
+      '<div class="marker"><b>'+v.at+'</b><span>'+markerUnit+'</span></div>'+
+      '<div class="card">'+
+        '<div class="card-top">'+
+          '<span class="visit-date">'+
+            (hasDob?fmt(due)+' <small>· '+relative(due)+'</small>'
+                   :(v.label||ageLabel(v))+(v.note?' <small>· '+v.note+'</small>':''))+
+          '</span>'+
+          '<span class="pill '+status+'">'+pillText+'</span>'+
+        '</div>'+
+        doses.map(x=>
+          '<div class="dose'+(x.g?' given':'')+'">'+
+            '<div class="dose-main">'+
+              '<div class="dose-name">'+VACCINES[x.d.v].name+
+                (x.d.tag?'<span class="tag">'+x.d.tag+'</span>':'')+'</div>'+
+              '<div class="dose-meta">'+x.d.dose+'</div>'+
+            '</div>'+
+            '<span class="price'+(state.care==='gov'?' free':'')+'">'+priceText(x.d.v)+'</span>'+
+            (x.g
+              ? '<button class="stamp'+(x.g.auto?' assumed':'')+'" data-id="'+x.id+'" '+
+                'data-due="'+(due?isoLocal(due):'')+'" title="Tap to mark as not given">'+
+                '<b>'+(x.g.auto?'ASSUMED':'GIVEN')+'</b><span>'+
+                fmt(new Date(x.g.on+'T00:00:00'))+'</span></button>'
+              : '<button class="mark" data-id="'+x.id+'" data-due="'+(due?isoLocal(due):'')+'">Mark as given</button>')+
+          '</div>').join('')+
+      '</div>';
+    list.appendChild(li);
+  });
+  if(!hasDob){
+    const note=document.createElement('div');
+    note.className='empty';
+    note.textContent='Add a date of birth above to turn these ages into real dates and reminders.';
+    list.prepend(note);
+  }
+  document.getElementById('visitsLede').hidden=!hasDob;
+
+  renderCost();
+}
+
+function renderCost(){
+  const c=costSummary(), el=document.getElementById('cost');
+  const scope=ageParts(state.dob)?'remaining':'total';
+  if(state.care==='gov'){
+    el.innerHTML=
+      '<div class="cost-total"><b>RM0</b><span>'+c.doses+' '+scope+' doses</span></div>'+
+      '<p>Every vaccine on this schedule is free at government health clinics for Malaysian children, including the '+
+      'doses given at school by the school health team.</p>'+
+      '<p>Some facilities still charge a small registration fee, and non-citizens pay foreigner rates. Switch to '+
+      '<em>Private clinic</em> above to see what the same course costs privately.</p>';
+    return;
+  }
+  const seen={};
+  futureVisits().forEach(v=>v.doses.forEach(d=>{
+    if(state.given[doseId(v,d)]) return;
+    seen[d.v]=(seen[d.v]||0)+1;
+  }));
+  const rows=Object.keys(seen).map(k=>{
+    const p=VACCINES[k].price;
+    return '<tr><td>'+VACCINES[k].name+'</td><td>'+seen[k]+' × '+
+      (p?'RM'+p[0]+'–'+p[1]:'ask clinic')+'</td></tr>';
+  });
+  el.innerHTML=
+    '<div class="cost-total"><b>RM'+c.lo.toLocaleString()+'–'+c.hi.toLocaleString()+'</b>'+
+    '<span>estimate for '+c.doses+' '+scope+' doses'+(c.unknown?' · '+c.unknown+' not priced':'')+'</span></div>'+
+    (rows.length?'<table><thead><tr><th>Vaccine</th><th>Doses left</th></tr></thead><tbody>'+rows.join('')+'</tbody></table>':'')+
+    '<p>Published guides put a full private course from birth to age two at roughly <strong>RM1,500–2,500</strong>, '+
+    'which matches the per-dose ranges above. City clinics and private hospitals charge more, and premium brands cost '+
+    'more than basic ones — Prevenar 13 runs higher than Synflorix, for example.</p>'+
+    '<p>BCG, Japanese encephalitis, DT and tetanus toxoid are nearly always given through government or school '+
+    'programmes, so private clinics rarely quote them; ask directly if you need one. Optional extras that are not on '+
+    'the national schedule — rotavirus, chickenpox, influenza, hepatitis A — are billed on top.</p>';
+}
+
+document.getElementById('glossary').innerHTML=Object.values(VACCINES).map(v=>
+  '<div class="entry"><h3>'+v.name+'</h3>'+
+  '<div class="against">Protects against '+v.against+'</div>'+
+  '<p>'+v.desc+'</p></div>').join('');
+
+/* events */
+document.getElementById('name').addEventListener('input',e=>{state.name=e.target.value;save();render();});
+document.getElementById('dob').addEventListener('change',e=>{state.dob=e.target.value;state.skipped={};refresh();});
+document.getElementById('region').addEventListener('change',e=>{state.region=e.target.value;refresh();});
+document.getElementById('segSex').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  state.sex = state.sex===b.dataset.sex ? '' : b.dataset.sex; refresh();
+});
+document.getElementById('segCare').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  state.care=b.dataset.care; save(); render();
+});
+document.getElementById('visits').addEventListener('click',e=>{
+  const btn=e.target.closest('[data-id]'); if(!btn) return;
+  const id=btn.dataset.id, due=btn.dataset.due;
+  if(state.given[id]){
+    delete state.given[id];
+    if(due && new Date(due+'T00:00:00')<startOfToday()) state.skipped[id]=true;
+  }else{
+    delete state.skipped[id];
+    state.given[id]={on:isoLocal(new Date()),auto:false};
+  }
+  save(); render();
+});
+document.getElementById('nextBand').addEventListener('click',e=>{
+  if(!e.target.closest('[data-act="ics-all"]')) return;
+  downloadIcs(futureVisits(),'immunisation-'+childName().toLowerCase().replace(/\s+/g,'-')+'.ics');
+});
+document.getElementById('reset').addEventListener('click',()=>{
+  state={name:'',dob:'',sex:'',region:'peninsular',care:'gov',given:{},skipped:{}};
+  document.getElementById('name').value='';
+  document.getElementById('dob').value='';
+  document.getElementById('region').value='peninsular';
+  save(); render();
+});
+
+load();
+</script>
+</body>
+</html>
