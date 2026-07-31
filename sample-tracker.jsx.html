@@ -1,0 +1,1709 @@
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import {
+  LayoutGrid, FlaskConical, ScanLine, PlusCircle, History, Settings2,
+  Bell, Search, ChevronRight, ChevronLeft, Printer, Download, AlertTriangle,
+  CheckCircle2, Clock, User, Paperclip, X, RotateCcw, ArrowRight, Filter
+} from "lucide-react";
+
+/* ------------------------------------------------------------------ */
+/*  CONFIG                                                             */
+/* ------------------------------------------------------------------ */
+
+const STORE_KEY = "lims:v1";
+const DAY = 86400000;
+
+const PHASE = {
+  intake: { label: "Intake", color: "var(--graphite)" },
+  wet: { label: "Wet lab", color: "var(--fam)" },
+  seq: { label: "Sequencing", color: "var(--teal)" },
+  dry: { label: "Dry lab", color: "var(--hex)" },
+  report: { label: "Reporting", color: "var(--tam)" },
+  done: { label: "Closed", color: "var(--hex-deep)" },
+};
+
+const DEFAULT_STAGES = [
+  { id: "received", name: "Received", days: 0.25, phase: "intake", roles: ["lab_tech", "admin"] },
+  { id: "logged", name: "Logged", days: 0.25, phase: "intake", roles: ["lab_tech", "admin"] },
+  { id: "extraction", name: "DNA/RNA extraction", days: 1, phase: "wet", roles: ["lab_tech", "admin"] },
+  { id: "qc", name: "QC", days: 1, phase: "wet", roles: ["lab_tech", "admin"] },
+  { id: "library", name: "Library prep", days: 1, phase: "wet", roles: ["lab_tech", "admin"] },
+  { id: "sequencing", name: "Sequencing", days: 3, phase: "seq", roles: ["lab_tech", "admin"] },
+  { id: "bioinformatics", name: "Bioinformatics", days: 2, phase: "dry", roles: ["bioinformatician", "admin"] },
+  { id: "report_draft", name: "Report generation", days: 1, phase: "report", roles: ["bioinformatician", "pathologist", "admin"] },
+  { id: "report_review", name: "Report review", days: 1, phase: "report", roles: ["pathologist", "admin"] },
+  { id: "completed", name: "Completed", days: 0, phase: "done", roles: ["pathologist", "admin"] },
+];
+
+const ROLES = {
+  admin: "Administrator",
+  lab_tech: "Laboratory technician",
+  bioinformatician: "Bioinformatician",
+  pathologist: "Pathologist",
+  manager: "Manager",
+  readonly: "Read-only",
+};
+
+const USERS = [
+  { id: "u1", name: "R. Haddad", role: "admin", initials: "RH" },
+  { id: "u2", name: "N. Osei", role: "lab_tech", initials: "NO" },
+  { id: "u3", name: "M. Lindqvist", role: "lab_tech", initials: "ML" },
+  { id: "u4", name: "S. Varma", role: "bioinformatician", initials: "SV" },
+  { id: "u5", name: "J. Okonkwo", role: "bioinformatician", initials: "JO" },
+  { id: "u6", name: "A. Ferrante", role: "pathologist", initials: "AF" },
+  { id: "u7", name: "T. Brennan", role: "manager", initials: "TB" },
+  { id: "u8", name: "K. Mensah", role: "readonly", initials: "KM" },
+];
+
+const PROJECTS = ["GEN-ONCO-26", "RARE-DX-PED", "WGS-POP-A", "CARDIO-PANEL", "TRANSPLANT-HLA"];
+const TYPES = ["Whole blood (EDTA)", "FFPE block", "Fresh tissue", "Saliva", "cfDNA plasma", "Buccal swab"];
+const TESTS = ["Whole exome (WES)", "RNA-seq", "Targeted panel 523g", "WGS 30x", "Sanger confirmation", "CNV array", "HLA typing"];
+const BENCHES = ["Bench 3", "Extraction rm.", "QC station", "Prep hood 2", "Seq. room", "Reporting desk"];
+
+/* ------------------------------------------------------------------ */
+/*  UTILITIES                                                          */
+/* ------------------------------------------------------------------ */
+
+const pad = (n, w = 2) => String(n).padStart(w, "0");
+const fmtDate = (t) => {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+const fmtTime = (t) => {
+  const d = new Date(t);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+const fmtDT = (t) => `${fmtDate(t)} ${fmtTime(t)}`;
+const relTime = (t) => {
+  const diff = Date.now() - t;
+  const h = diff / 3600000;
+  if (h < 1) return `${Math.max(1, Math.round(diff / 60000))} min ago`;
+  if (h < 24) return `${Math.round(h)} h ago`;
+  return `${(h / 24).toFixed(1)} d ago`;
+};
+const dur = (ms) => {
+  const h = ms / 3600000;
+  if (h < 24) return `${h.toFixed(1)} h`;
+  return `${(h / 24).toFixed(1)} d`;
+};
+
+function mulberry(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const stageIdx = (stages, id) => stages.findIndex((s) => s.id === id);
+
+/** Total expected turnaround, in ms, for the whole workflow. */
+const targetTAT = (stages) => stages.reduce((a, s) => a + s.days, 0) * DAY;
+
+/** Deadline for the sample's current stage. */
+function stageDeadline(sample, stages) {
+  const st = stages.find((s) => s.id === sample.stage);
+  if (!st) return null;
+  return sample.stageAt + st.days * DAY;
+}
+
+/** Overall due date = received + sum of stage targets. */
+const sampleDue = (sample, stages) => sample.receivedAt + targetTAT(stages);
+
+/** ok | warn | late — drives every colour cue in the UI. */
+function health(sample, stages, now = Date.now()) {
+  if (sample.stage === "completed") {
+    return sample.completedAt <= sampleDue(sample, stages) ? "ok" : "late";
+  }
+  const due = sampleDue(sample, stages);
+  const sd = stageDeadline(sample, stages);
+  if (now > due || (sd && now > sd)) return "late";
+  if (due - now < DAY || (sd && sd - now < 0.3 * DAY)) return "warn";
+  return "ok";
+}
+
+const HEALTH_LABEL = { ok: "On time", warn: "Near deadline", late: "Overdue" };
+
+/* ---- Code 39 barcode --------------------------------------------- */
+const C39 = {
+  "0": "nnnwwnwnn", "1": "wnnwnnnnw", "2": "nnwwnnnnw", "3": "wnwwnnnnn", "4": "nnnwwnnnw",
+  "5": "wnnwwnnnn", "6": "nnwwwnnnn", "7": "nnnwnnwnw", "8": "wnnwnnwnn", "9": "nnwwnnwnn",
+  "A": "wnnnnwnnw", "B": "nnwnnwnnw", "C": "wnwnnwnnn", "D": "nnnnwwnnw", "E": "wnnnwwnnn",
+  "F": "nnwnwwnnn", "G": "nnnnnwwnw", "H": "wnnnnwwnn", "I": "nnwnnwwnn", "J": "nnnnwwwnn",
+  "K": "wnnnnnnww", "L": "nnwnnnnww", "M": "wnwnnnnwn", "N": "nnnnwnnww", "O": "wnnnwnnwn",
+  "P": "nnwnwnnwn", "Q": "nnnnnnwww", "R": "wnnnnnwwn", "S": "nnwnnnwwn", "T": "nnnnwnwwn",
+  "U": "wwnnnnnnw", "V": "nwwnnnnnw", "W": "wwwnnnnnn", "X": "nwnnwnnnw", "Y": "wwnnwnnnn",
+  "Z": "nwwnwnnnn", "-": "nwnnnnwnw", ".": "wwnnnnwnn", " ": "nwwnnnwnn", "*": "nwnnwnwnn",
+};
+
+function Barcode({ value, height = 46, narrow = 1.7, showText = true }) {
+  const text = `*${String(value).toUpperCase()}*`;
+  const bars = [];
+  let x = 0;
+  for (const ch of text) {
+    const pat = C39[ch];
+    if (!pat) continue;
+    pat.split("").forEach((w, i) => {
+      const width = w === "w" ? narrow * 2.6 : narrow;
+      if (i % 2 === 0) bars.push({ x, w: width });
+      x += width;
+    });
+    x += narrow; // inter-character gap
+  }
+  return (
+    <div className="bc">
+      <svg viewBox={`0 0 ${x} ${height}`} width="100%" height={height} preserveAspectRatio="none" role="img"
+        aria-label={`Barcode ${value}`}>
+        <rect width={x} height={height} fill="#fff" />
+        {bars.map((b, i) => <rect key={i} x={b.x} y="0" width={b.w} height={height} fill="#0C1418" />)}
+      </svg>
+      {showText && <div className="bc-text">{value}</div>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  SEED DATA                                                          */
+/* ------------------------------------------------------------------ */
+
+function seed() {
+  const rnd = mulberry(20260730);
+  const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
+  const stages = DEFAULT_STAGES;
+  const now = Date.now();
+  const samples = [];
+  const audit = [];
+
+  for (let i = 0; i < 72; i++) {
+    const durs = stages.map((s) => Math.max(0.15, s.days * (0.45 + rnd() * 1.9)) * DAY);
+    const finished = rnd() < 0.42;
+    const idx = finished ? stages.length - 1 : 1 + Math.floor(rnd() * (stages.length - 2));
+    const before = durs.slice(0, idx).reduce((a, b) => a + b, 0);
+    let receivedAt, completedAt = null;
+    if (finished) {
+      completedAt = now - rnd() * 14 * DAY;
+      receivedAt = completedAt - before;
+    } else {
+      const age = Math.max(0.1, stages[idx].days * (0.2 + rnd() * 2.6)) * DAY;
+      receivedAt = now - (before + age);
+    }
+    const id = `SMP-2026-${pad(1000 + i, 4)}`;
+    const priority = rnd() < 0.13 ? "STAT" : rnd() < 0.35 ? "High" : "Routine";
+    const owner = pick(USERS.filter((u) => ["lab_tech", "bioinformatician", "pathologist"].includes(u.role)));
+    const tests = [pick(TESTS)];
+    if (rnd() < 0.3) { const t = pick(TESTS); if (!tests.includes(t)) tests.push(t); }
+
+    const history = [];
+    let cursor = receivedAt;
+    for (let k = 0; k <= idx; k++) {
+      const actor = k >= 6 ? pick(USERS.filter((u) => ["bioinformatician", "pathologist", "admin"].includes(u.role)))
+        : pick(USERS.filter((u) => ["lab_tech", "admin"].includes(u.role)));
+      history.push({
+        stage: stages[k].id, at: cursor, by: actor.id,
+        note: k === idx && rnd() < 0.25 ? pick([
+          "Repeat requested — low A260/280.", "Awaiting flow cell slot.",
+          "Coverage below target, re-queued.", "Held for clinical correlation.",
+        ]) : "",
+        file: rnd() < 0.12 ? pick(["qc_bioanalyzer.pdf", "run_metrics.csv", "gel_image.png", "variant_table.tsv"]) : null,
+      });
+      audit.push({
+        at: cursor, user: actor.id, entity: id, action: k === 0 ? "Sample registered" : "Stage advanced",
+        field: "stage", from: k === 0 ? null : stages[k - 1].name, to: stages[k].name,
+      });
+      cursor += durs[k];
+    }
+    const scans = [];
+    for (let s = 0; s < Math.floor(rnd() * 4); s++) {
+      scans.push({
+        at: receivedAt + rnd() * (now - receivedAt), by: pick(USERS).id,
+        location: pick(BENCHES), device: rnd() < 0.6 ? "Phone camera" : "Handheld scanner",
+      });
+    }
+
+    samples.push({
+      id, patient: `PT-2026-${pad(400 + Math.floor(rnd() * 560), 4)}`,
+      project: pick(PROJECTS), type: pick(TYPES),
+      collectedAt: receivedAt - rnd() * 2 * DAY,
+      receivedAt, tests, priority, owner: owner.id,
+      stage: stages[idx].id, stageAt: history[history.length - 1].at,
+      completedAt, history, scans,
+      site: pick(["Central hospital", "Oncology clinic", "External courier", "Paediatric ward", "Research partner"]),
+    });
+  }
+  audit.sort((a, b) => b.at - a.at);
+  return { samples, audit: audit.slice(0, 400), stages, currentUser: "u2", readNotifs: [], seq: 1072 };
+}
+
+/* ------------------------------------------------------------------ */
+/*  NOTIFICATION RULES                                                 */
+/* ------------------------------------------------------------------ */
+
+function buildNotifications(state) {
+  const { samples, stages } = state;
+  const out = [];
+  const now = Date.now();
+  samples.forEach((s) => {
+    const h = health(s, stages, now);
+    const st = stages.find((x) => x.id === s.stage);
+    if (s.stage !== "completed" && h === "late") {
+      out.push({
+        key: `late:${s.id}`, kind: "overdue", sample: s.id, at: sampleDue(s, stages),
+        title: `${s.id} is past its turnaround target`,
+        body: `Due ${fmtDate(sampleDue(s, stages))} · still in ${st.name} · ${userName(s.owner)}`,
+      });
+    } else if (s.stage !== "completed" && st && now - s.stageAt > st.days * DAY * 1.5) {
+      out.push({
+        key: `stuck:${s.id}`, kind: "stuck", sample: s.id, at: s.stageAt + st.days * DAY * 1.5,
+        title: `${s.id} has been in ${st.name} too long`,
+        body: `${dur(now - s.stageAt)} elapsed against a ${st.days} d target`,
+      });
+    }
+    if (s.stage === "completed" && now - s.completedAt < 2 * DAY) {
+      out.push({
+        key: `done:${s.id}`, kind: "completed", sample: s.id, at: s.completedAt,
+        title: `Report signed out for ${s.id}`,
+        body: `${s.project} · ${s.tests.join(", ")}`,
+      });
+    }
+    if (now - s.receivedAt < 1.2 * DAY && s.stage !== "completed") {
+      out.push({
+        key: `assign:${s.id}`, kind: "assigned", sample: s.id, at: s.receivedAt,
+        title: `${s.id} assigned to ${userName(s.owner)}`,
+        body: `${s.type} · ${s.priority} priority`,
+      });
+    }
+  });
+  return out.sort((a, b) => b.at - a.at).slice(0, 60);
+}
+
+const userName = (id) => (USERS.find((u) => u.id === id) || {}).name || "—";
+const userOf = (id) => USERS.find((u) => u.id === id) || USERS[0];
+
+/* ------------------------------------------------------------------ */
+/*  SHARED UI PIECES                                                   */
+/* ------------------------------------------------------------------ */
+
+function StageTrack({ sample, stages, compact = false }) {
+  const cur = stageIdx(stages, sample.stage);
+  const h = health(sample, stages);
+  return (
+    <div className={`track ${compact ? "track-c" : ""}`} role="img"
+      aria-label={`Stage ${cur + 1} of ${stages.length}: ${stages[cur].name}`}>
+      {stages.map((s, i) => {
+        const state = i < cur ? "done" : i === cur ? "cur" : "todo";
+        return (
+          <div key={s.id} className={`lane lane-${state} ${state === "cur" && h === "late" ? "lane-late" : ""}`}
+            style={{ "--lane": PHASE[s.phase].color }} title={`${s.name} · target ${s.days} d`}>
+            {!compact && <span className="lane-tick">{state === "cur" ? "▲" : ""}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function HealthDot({ state }) {
+  return <span className={`dot dot-${state}`} title={HEALTH_LABEL[state]} />;
+}
+
+function Pill({ children, tone = "n" }) {
+  return <span className={`pill pill-${tone}`}>{children}</span>;
+}
+
+function Avatar({ id, size = 26 }) {
+  const u = userOf(id);
+  return <span className="ava" style={{ width: size, height: size, fontSize: size * 0.38 }} title={`${u.name} · ${ROLES[u.role]}`}>{u.initials}</span>;
+}
+
+/* Hand-drawn SVG charts — no chart library, so the visual language stays ours. */
+
+function LadderChart({ rows, max }) {
+  return (
+    <div className="ladder">
+      {rows.map((r) => (
+        <div key={r.label} className="ladder-row">
+          <div className="ladder-label">{r.label}</div>
+          <div className="ladder-bar">
+            <div className="ladder-fill" style={{ width: `${(r.value / (max || 1)) * 100}%`, background: r.color }} />
+          </div>
+          <div className="ladder-val">{r.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ColumnChart({ data, height = 120 }) {
+  const max = Math.max(1, ...data.map((d) => d.v));
+  const mean = data.reduce((a, b) => a + b.v, 0) / (data.length || 1);
+  const w = 100 / data.length;
+  return (
+    <svg className="cols" viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" height={height}>
+      <line x1="0" x2="100" y1={height - (mean / max) * (height - 14)} y2={height - (mean / max) * (height - 14)}
+        stroke="var(--tam)" strokeWidth="0.6" strokeDasharray="2 2" />
+      {data.map((d, i) => {
+        const bh = (d.v / max) * (height - 14);
+        return (
+          <rect key={i} x={i * w + w * 0.18} y={height - bh} width={w * 0.64} height={bh}
+            fill="var(--teal)" rx="0.6">
+            <title>{`${d.label}: ${d.v} completed`}</title>
+          </rect>
+        );
+      })}
+    </svg>
+  );
+}
+
+function PairedBars({ rows }) {
+  const max = Math.max(1, ...rows.flatMap((r) => [r.actual, r.target]));
+  return (
+    <div className="paired">
+      {rows.map((r) => (
+        <div key={r.label} className="paired-row">
+          <div className="paired-label">{r.label}</div>
+          <div className="paired-track">
+            <div className="paired-target" style={{ width: `${(r.target / max) * 100}%` }} />
+            <div className={`paired-actual ${r.actual > r.target * 1.15 ? "over" : ""}`}
+              style={{ width: `${(r.actual / max) * 100}%` }} />
+          </div>
+          <div className="paired-val">
+            {r.actual.toFixed(1)}<span className="muted"> / {r.target}d</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  APP                                                                */
+/* ------------------------------------------------------------------ */
+
+export default function App() {
+  const [state, setState] = useState(null);
+  const [view, setView] = useState("dash");
+  const [openId, setOpenId] = useState(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [busy, setBusy] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      let loaded = null;
+      try {
+        const res = await window.storage.get(STORE_KEY);
+        if (res && res.value) loaded = JSON.parse(res.value);
+      } catch (e) { /* first run — no key yet */ }
+      if (!alive) return;
+      setState(loaded && loaded.samples ? loaded : seed());
+      setBusy(false);
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const saveRef = useRef(null);
+  useEffect(() => {
+    if (!state) return;
+    clearTimeout(saveRef.current);
+    saveRef.current = setTimeout(async () => {
+      try { await window.storage.set(STORE_KEY, JSON.stringify(state)); }
+      catch (e) { console.error("Could not save", e); }
+    }, 500);
+    return () => clearTimeout(saveRef.current);
+  }, [state]);
+
+  const flash = useCallback((msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2600);
+  }, []);
+
+  if (busy || !state) {
+    return <div className="boot"><div className="boot-bar" /><span>Loading sample register…</span></div>;
+  }
+
+  const me = userOf(state.currentUser);
+  const stages = state.stages;
+  const notifs = buildNotifications(state);
+  const unread = notifs.filter((n) => !state.readNotifs.includes(n.key)).length;
+  const open = state.samples.find((s) => s.id === openId);
+
+  /* ---- mutations ---- */
+  const log = (entry) => ({ at: Date.now(), user: state.currentUser, ...entry });
+
+  function advance(sample, note, file) {
+    const i = stageIdx(stages, sample.stage);
+    if (i >= stages.length - 1) return;
+    const next = stages[i + 1];
+    if (!next.roles.includes(me.role)) { flash(`${ROLES[me.role]} cannot sign off ${next.name}`); return; }
+    const now = Date.now();
+    setState((p) => ({
+      ...p,
+      samples: p.samples.map((s) => s.id !== sample.id ? s : {
+        ...s, stage: next.id, stageAt: now,
+        completedAt: next.id === "completed" ? now : null,
+        history: [...s.history, { stage: next.id, at: now, by: p.currentUser, note: note || "", file: file || null }],
+      }),
+      audit: [log({ entity: sample.id, action: "Stage advanced", field: "stage", from: stages[i].name, to: next.name }), ...p.audit],
+    }));
+    flash(`${sample.id} → ${next.name}`);
+  }
+
+  function reassign(sample, ownerId) {
+    setState((p) => ({
+      ...p,
+      samples: p.samples.map((s) => s.id === sample.id ? { ...s, owner: ownerId } : s),
+      audit: [log({ entity: sample.id, action: "Reassigned", field: "owner", from: userName(sample.owner), to: userName(ownerId) }), ...p.audit],
+    }));
+    flash(`${sample.id} reassigned to ${userName(ownerId)}`);
+  }
+
+  function recordScan(sample, device) {
+    setState((p) => ({
+      ...p,
+      samples: p.samples.map((s) => s.id === sample.id
+        ? { ...s, scans: [...s.scans, { at: Date.now(), by: p.currentUser, location: "Handheld", device }] } : s),
+      audit: [log({ entity: sample.id, action: "Barcode scanned", field: "scan", from: null, to: device }), ...p.audit],
+    }));
+  }
+
+  function register(form) {
+    const nextSeq = state.seq + 1;
+    const id = `SMP-2026-${pad(nextSeq, 4)}`;
+    const now = Date.now();
+    const s = {
+      id, patient: form.patient, project: form.project, type: form.type,
+      collectedAt: new Date(form.collected).getTime() || now,
+      receivedAt: now, tests: form.tests, priority: form.priority, owner: form.owner,
+      stage: "received", stageAt: now, completedAt: null, site: form.site,
+      history: [{ stage: "received", at: now, by: state.currentUser, note: form.note || "", file: null }],
+      scans: [],
+    };
+    setState((p) => ({
+      ...p, seq: nextSeq, samples: [s, ...p.samples],
+      audit: [log({ entity: id, action: "Sample registered", field: "stage", from: null, to: "Received" }), ...p.audit],
+    }));
+    flash(`${id} registered`);
+    return id;
+  }
+
+  function setStageDays(id, days) {
+    setState((p) => ({
+      ...p,
+      stages: p.stages.map((s) => s.id === id ? { ...s, days } : s),
+      audit: [log({ entity: "Workflow config", action: "Turnaround target changed", field: id, from: `${p.stages.find(x => x.id === id).days} d`, to: `${days} d` }), ...p.audit],
+    }));
+  }
+
+  const nav = [
+    { id: "dash", label: "Dashboard", icon: LayoutGrid },
+    { id: "samples", label: "Samples", icon: FlaskConical },
+    { id: "scan", label: "Scan", icon: ScanLine },
+    { id: "register", label: "Register", icon: PlusCircle },
+    { id: "audit", label: "Audit", icon: History },
+    { id: "settings", label: "Settings", icon: Settings2 },
+  ];
+
+  const go = (v) => { setOpenId(null); setView(v); };
+
+  return (
+    <div className="app">
+      <Styles />
+
+      <aside className="rail">
+        <div className="brand">
+          <div className="brand-mark"><span /><span /><span /><span /></div>
+          <div className="brand-txt"><b>HELIX</b><i>sample register</i></div>
+        </div>
+        <nav>
+          {nav.map((n) => (
+            <button key={n.id} className={`rail-btn ${view === n.id && !open ? "on" : ""}`} onClick={() => go(n.id)}>
+              <n.icon size={18} strokeWidth={1.9} /><span>{n.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="rail-foot">
+          <label className="rail-lbl">Signed in as</label>
+          <select className="who" value={state.currentUser}
+            onChange={(e) => setState((p) => ({ ...p, currentUser: e.target.value }))}>
+            {USERS.map((u) => <option key={u.id} value={u.id}>{u.name} — {ROLES[u.role]}</option>)}
+          </select>
+        </div>
+      </aside>
+
+      <header className="topbar">
+        <div className="tb-left">
+          {open
+            ? <button className="ghost" onClick={() => setOpenId(null)}><ChevronLeft size={16} /> Back</button>
+            : <h1>{nav.find((n) => n.id === view)?.label}</h1>}
+        </div>
+        <div className="tb-right">
+          <button className="ghost bell" onClick={() => setNotifOpen(true)} aria-label="Notifications">
+            <Bell size={18} />{unread > 0 && <em>{unread}</em>}
+          </button>
+          <Avatar id={state.currentUser} size={30} />
+        </div>
+      </header>
+
+      <main className="main">
+        {open ? (
+          <SampleDetail sample={open} stages={stages} me={me} onAdvance={advance}
+            onReassign={reassign} onClose={() => setOpenId(null)} />
+        ) : view === "dash" ? (
+          <Dashboard state={state} onOpen={setOpenId} onGo={go} />
+        ) : view === "samples" ? (
+          <SamplesView state={state} onOpen={setOpenId} me={me} onAdvance={advance} flash={flash} />
+        ) : view === "scan" ? (
+          <ScanView state={state} onOpen={setOpenId} onScan={recordScan} me={me} onAdvance={advance} />
+        ) : view === "register" ? (
+          <RegisterView state={state} onRegister={register} onOpen={setOpenId} />
+        ) : view === "audit" ? (
+          <AuditView state={state} />
+        ) : (
+          <SettingsView state={state} onDays={setStageDays} onReset={() => { setState(seed()); flash("Demo data restored"); }} />
+        )}
+      </main>
+
+      <nav className="tabbar">
+        {nav.slice(0, 5).map((n) => (
+          <button key={n.id} className={view === n.id && !open ? "on" : ""} onClick={() => go(n.id)}>
+            <n.icon size={20} strokeWidth={1.8} /><span>{n.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      {notifOpen && (
+        <NotifDrawer notifs={notifs} read={state.readNotifs} onClose={() => setNotifOpen(false)}
+          onOpen={(id) => { setNotifOpen(false); setOpenId(id); }}
+          onReadAll={() => setState((p) => ({ ...p, readNotifs: notifs.map((n) => n.key) }))} />
+      )}
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  DASHBOARD                                                          */
+/* ------------------------------------------------------------------ */
+
+function Dashboard({ state, onOpen, onGo }) {
+  const { samples, stages } = state;
+  const now = Date.now();
+  const active = samples.filter((s) => s.stage !== "completed");
+  const done = samples.filter((s) => s.stage === "completed");
+
+  const overdue = active.filter((s) => health(s, stages, now) === "late");
+  const dueToday = active.filter((s) => {
+    const d = sampleDue(s, stages);
+    return d >= now - DAY && fmtDate(d) === fmtDate(now);
+  });
+
+  const tats = done.map((s) => (s.completedAt - s.receivedAt) / DAY);
+  const avgTAT = tats.length ? tats.reduce((a, b) => a + b, 0) / tats.length : 0;
+  const onTime = done.filter((s) => s.completedAt <= sampleDue(s, stages)).length;
+  const onTimePct = done.length ? Math.round((onTime / done.length) * 100) : 0;
+
+  const byStage = stages.map((st) => ({
+    label: st.name, value: active.filter((s) => s.stage === st.id).length, color: PHASE[st.phase].color,
+  })).filter((r) => r.label !== "Completed");
+
+  const throughput = useMemo(() => {
+    const days = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now - i * DAY);
+      const key = fmtDate(d);
+      days.push({ label: key.slice(5), v: done.filter((s) => fmtDate(s.completedAt) === key).length });
+    }
+    return days;
+  }, [state]);
+
+  const bottlenecks = useMemo(() => stages.slice(0, 9).map((st) => {
+    const spans = [];
+    samples.forEach((s) => {
+      const i = s.history.findIndex((h) => h.stage === st.id);
+      if (i === -1) return;
+      const end = s.history[i + 1] ? s.history[i + 1].at : (s.stage === st.id ? now : null);
+      if (end) spans.push((end - s.history[i].at) / DAY);
+    });
+    const actual = spans.length ? spans.reduce((a, b) => a + b, 0) / spans.length : 0;
+    return { label: st.name, actual, target: st.days, n: spans.length };
+  }).sort((a, b) => (b.actual - b.target) - (a.actual - a.target)), [state]);
+
+  const workload = useMemo(() => {
+    const map = {};
+    active.forEach((s) => {
+      map[s.owner] = map[s.owner] || { total: 0, late: 0 };
+      map[s.owner].total++;
+      if (health(s, stages, now) === "late") map[s.owner].late++;
+    });
+    return Object.entries(map).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.total - a.total);
+  }, [state]);
+
+  const maxLoad = Math.max(1, ...workload.map((w) => w.total));
+
+  return (
+    <div className="stack">
+      <section className="kpis">
+        <Kpi label="Active samples" value={active.length} sub={`${samples.length} total on register`} />
+        <Kpi label="Due today" value={dueToday.length} sub="Against workflow target" tone={dueToday.length ? "warn" : "n"} />
+        <Kpi label="Overdue" value={overdue.length} sub="Past target or stage deadline" tone={overdue.length ? "late" : "n"} />
+        <Kpi label="Average turnaround" value={avgTAT.toFixed(1)} unit="d" sub={`Target ${(targetTAT(stages) / DAY).toFixed(1)} d`} />
+        <Kpi label="On-time rate" value={onTimePct} unit="%" sub={`${onTime} of ${done.length} reports`} tone={onTimePct > 80 ? "ok" : "warn"} />
+        <Kpi label="Signed out (14 d)" value={throughput.reduce((a, b) => a + b.v, 0)} sub="Reports released" />
+      </section>
+
+      <div className="grid2">
+        <Card title="Where the work is sitting" hint="Active samples by stage">
+          <LadderChart rows={byStage} max={Math.max(...byStage.map((r) => r.value), 1)} />
+        </Card>
+
+        <Card title="Bottlenecks" hint="Mean time in stage vs target">
+          <PairedBars rows={bottlenecks.slice(0, 6)} />
+          <p className="foot">Bars past the target marker show where samples lose days. Ranked by worst overrun.</p>
+        </Card>
+
+        <Card title="Daily throughput" hint="Reports signed out, last 14 days">
+          <ColumnChart data={throughput} />
+          <div className="axis">{throughput.filter((_, i) => i % 3 === 0).map((d) => <span key={d.label}>{d.label}</span>)}</div>
+        </Card>
+
+        <Card title="Staff workload" hint="Open samples per person">
+          <div className="load">
+            {workload.map((w) => (
+              <div key={w.id} className="load-row">
+                <Avatar id={w.id} />
+                <div className="load-name">{userName(w.id)}<i>{ROLES[userOf(w.id).role]}</i></div>
+                <div className="load-bar">
+                  <div className="load-fill" style={{ width: `${(w.total / maxLoad) * 100}%` }} />
+                  {w.late > 0 && <div className="load-late" style={{ width: `${(w.late / maxLoad) * 100}%` }} />}
+                </div>
+                <div className="load-val">{w.total}{w.late > 0 && <em> · {w.late} late</em>}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <Card title="Needs attention now" hint={`${overdue.length} overdue`} action={
+        <button className="ghost" onClick={() => onGo("samples")}>All samples <ChevronRight size={14} /></button>}>
+        {overdue.length === 0
+          ? <Empty text="Nothing is overdue. Every open sample is inside its stage target." />
+          : (
+            <div className="rows">
+              {overdue.slice(0, 8).map((s) => (
+                <button key={s.id} className="row" onClick={() => onOpen(s.id)}>
+                  <HealthDot state="late" />
+                  <span className="mono strong">{s.id}</span>
+                  <span className="row-mid">{stages.find((x) => x.id === s.stage).name}</span>
+                  <span className="muted hide-s">{dur(now - s.stageAt)} in stage</span>
+                  <Pill tone={s.priority === "STAT" ? "late" : "n"}>{s.priority}</Pill>
+                  <Avatar id={s.owner} size={22} />
+                  <ChevronRight size={15} className="muted" />
+                </button>
+              ))}
+            </div>
+          )}
+      </Card>
+    </div>
+  );
+}
+
+function Kpi({ label, value, unit, sub, tone = "n" }) {
+  return (
+    <div className={`kpi kpi-${tone}`}>
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-val">{value}{unit && <i>{unit}</i>}</div>
+      <div className="kpi-sub">{sub}</div>
+    </div>
+  );
+}
+
+function Card({ title, hint, action, children }) {
+  return (
+    <section className="card">
+      <header className="card-h">
+        <div><h2>{title}</h2>{hint && <p>{hint}</p>}</div>
+        {action}
+      </header>
+      <div className="card-b">{children}</div>
+    </section>
+  );
+}
+
+function Empty({ text }) { return <p className="empty">{text}</p>; }
+
+/* ------------------------------------------------------------------ */
+/*  SAMPLES LIST                                                       */
+/* ------------------------------------------------------------------ */
+
+function SamplesView({ state, onOpen, me, onAdvance, flash }) {
+  const { samples, stages } = state;
+  const [q, setQ] = useState("");
+  const [stage, setStage] = useState("");
+  const [hf, setHf] = useState("");
+  const [proj, setProj] = useState("");
+  const [from, setFrom] = useState("");
+  const now = Date.now();
+
+  const list = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    return samples.filter((s) => {
+      if (stage && s.stage !== stage) return false;
+      if (proj && s.project !== proj) return false;
+      if (hf && health(s, stages, now) !== hf) return false;
+      if (from && s.receivedAt < new Date(from).getTime()) return false;
+      if (!t) return true;
+      return [s.id, s.patient, s.project, s.type, s.site, userName(s.owner), ...s.tests]
+        .join(" ").toLowerCase().includes(t);
+    }).sort((a, b) => sampleDue(a, stages) - sampleDue(b, stages));
+  }, [samples, q, stage, hf, proj, from, stages]);
+
+  function exportCSV() {
+    const head = ["Sample ID", "Patient", "Project", "Type", "Tests", "Priority", "Owner", "Stage", "Received", "Due", "Status"];
+    const rows = list.map((s) => [s.id, s.patient, s.project, s.type, s.tests.join("; "), s.priority,
+      userName(s.owner), stages.find((x) => x.id === s.stage).name, fmtDate(s.receivedAt),
+      fmtDate(sampleDue(s, stages)), HEALTH_LABEL[health(s, stages, now)]]);
+    const csv = [head, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    try {
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = `samples_${fmtDate(now)}.csv`; a.click();
+      URL.revokeObjectURL(url);
+      flash(`${list.length} rows exported`);
+    } catch (e) { flash("Export blocked here — use the server export in production"); }
+  }
+
+  return (
+    <div className="stack">
+      <div className="toolbar">
+        <div className="search">
+          <Search size={16} />
+          <input value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="Search barcode, sample ID, patient, project, test, staff" />
+          {q && <button className="ghost" onClick={() => setQ("")}><X size={14} /></button>}
+        </div>
+        <div className="filters">
+          <select value={stage} onChange={(e) => setStage(e.target.value)}>
+            <option value="">All stages</option>
+            {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <select value={hf} onChange={(e) => setHf(e.target.value)}>
+            <option value="">Any status</option>
+            <option value="ok">On time</option><option value="warn">Near deadline</option><option value="late">Overdue</option>
+          </select>
+          <select value={proj} onChange={(e) => setProj(e.target.value)}>
+            <option value="">All projects</option>
+            {PROJECTS.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} title="Received on or after" />
+          <button className="btn-ghost" onClick={exportCSV}><Download size={14} /> CSV</button>
+        </div>
+      </div>
+
+      <p className="count">{list.length} sample{list.length === 1 ? "" : "s"}
+        {(stage || hf || proj || from || q) && <button className="linkish" onClick={() => { setQ(""); setStage(""); setHf(""); setProj(""); setFrom(""); }}>Clear filters</button>}
+      </p>
+
+      <div className="tbl">
+        {list.map((s) => {
+          const h = health(s, stages, now);
+          const st = stages.find((x) => x.id === s.stage);
+          const canNext = stageIdx(stages, s.stage) < stages.length - 1 &&
+            stages[stageIdx(stages, s.stage) + 1].roles.includes(me.role);
+          return (
+            <div key={s.id} className={`trow trow-${h}`}>
+              <button className="trow-main" onClick={() => onOpen(s.id)}>
+                <div className="trow-id">
+                  <HealthDot state={h} />
+                  <span className="mono strong">{s.id}</span>
+                  {s.priority !== "Routine" && <Pill tone={s.priority === "STAT" ? "late" : "warn"}>{s.priority}</Pill>}
+                </div>
+                <div className="trow-meta">
+                  <span className="mono">{s.patient}</span><span className="sep">·</span>
+                  <span>{s.project}</span><span className="sep">·</span>
+                  <span className="muted">{s.type}</span>
+                </div>
+                <StageTrack sample={s} stages={stages} compact />
+                <div className="trow-tail">
+                  <span className="stage-name">{st.name}</span>
+                  <span className="muted hide-s">due {fmtDate(sampleDue(s, stages))}</span>
+                  <Avatar id={s.owner} size={22} />
+                </div>
+              </button>
+              {canNext && s.stage !== "completed" && (
+                <button className="quick" title={`Advance to ${stages[stageIdx(stages, s.stage) + 1].name}`}
+                  onClick={() => onAdvance(s, "Advanced from sample list")}>
+                  <ArrowRight size={16} />
+                </button>
+              )}
+            </div>
+          );
+        })}
+        {list.length === 0 && <Empty text="No samples match these filters. Widen the date range or clear the search." />}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  SAMPLE DETAIL                                                      */
+/* ------------------------------------------------------------------ */
+
+function SampleDetail({ sample, stages, me, onAdvance, onReassign, onClose }) {
+  const [note, setNote] = useState("");
+  const [file, setFile] = useState(null);
+  const [showLabel, setShowLabel] = useState(false);
+  const now = Date.now();
+  const i = stageIdx(stages, sample.stage);
+  const st = stages[i];
+  const next = stages[i + 1];
+  const h = health(sample, stages, now);
+  const can = next && next.roles.includes(me.role);
+  const due = sampleDue(sample, stages);
+  const sd = stageDeadline(sample, stages);
+
+  return (
+    <div className="stack detail">
+      <div className="det-head">
+        <div>
+          <div className="det-id"><HealthDot state={h} /><span className="mono">{sample.id}</span>
+            <Pill tone={sample.priority === "STAT" ? "late" : sample.priority === "High" ? "warn" : "n"}>{sample.priority}</Pill>
+          </div>
+          <h2>{sample.tests.join(" + ")}</h2>
+          <p className="det-sub">{sample.patient} · {sample.project} · {sample.type} · {sample.site}</p>
+        </div>
+        <div className="det-actions">
+          <button className="btn-ghost" onClick={() => setShowLabel(true)}><Printer size={14} /> Label</button>
+        </div>
+      </div>
+
+      <section className="card">
+        <div className="card-b">
+          <StageTrack sample={sample} stages={stages} />
+          <div className="track-legend">
+            {stages.map((s, k) => (
+              <span key={s.id} className={k === i ? "on" : k < i ? "past" : ""}>{s.name}</span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div className="grid2">
+        <Card title="Current stage" hint={`${st.name} · target ${st.days} d`}>
+          <div className="statline">
+            <div><label>In stage</label><b>{dur(now - sample.stageAt)}</b></div>
+            <div><label>Stage deadline</label><b className={sd && now > sd ? "red" : ""}>{sd ? fmtDT(sd) : "—"}</b></div>
+            <div><label>Sample due</label><b className={now > due && sample.stage !== "completed" ? "red" : ""}>{fmtDate(due)}</b></div>
+            <div><label>Status</label><b className={h === "late" ? "red" : h === "warn" ? "amber" : "green"}>{HEALTH_LABEL[h]}</b></div>
+          </div>
+
+          {sample.stage !== "completed" ? (
+            <div className="advance">
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
+                placeholder={`Notes for ${next ? next.name : "this step"} (optional)`} />
+              <div className="adv-foot">
+                <label className="attach">
+                  <Paperclip size={14} />
+                  <input type="file" onChange={(e) => setFile(e.target.files[0]?.name || null)} />
+                  {file || "Attach result"}
+                </label>
+                <button className="btn" disabled={!can}
+                  onClick={() => { onAdvance(sample, note, file); setNote(""); setFile(null); }}>
+                  {can ? <>Advance to {next.name}</> : `${ROLES[me.role]} cannot sign this step`}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="done-note"><CheckCircle2 size={16} /> Signed out {fmtDT(sample.completedAt)} · total turnaround {dur(sample.completedAt - sample.receivedAt)}</div>
+          )}
+
+          <div className="assign">
+            <label>Assigned to</label>
+            <select value={sample.owner} disabled={!["admin", "manager"].includes(me.role)}
+              onChange={(e) => onReassign(sample, e.target.value)}>
+              {USERS.filter((u) => u.role !== "readonly").map((u) => <option key={u.id} value={u.id}>{u.name} — {ROLES[u.role]}</option>)}
+            </select>
+            {!["admin", "manager"].includes(me.role) && <i className="muted">Managers and admins reassign work.</i>}
+          </div>
+        </Card>
+
+        <Card title="Chain of custody" hint={`${sample.history.length} status entries`}>
+          <ol className="timeline">
+            {[...sample.history].reverse().map((hh, k) => {
+              const s = stages.find((x) => x.id === hh.stage);
+              const prev = sample.history[sample.history.length - k - 2];
+              return (
+                <li key={k} style={{ "--lane": PHASE[s.phase].color }}>
+                  <div className="tl-dot" />
+                  <div className="tl-body">
+                    <div className="tl-top"><b>{s.name}</b><span className="muted">{fmtDT(hh.at)}</span></div>
+                    <div className="tl-meta">
+                      <Avatar id={hh.by} size={20} /> {userName(hh.by)}
+                      {prev && <span className="muted"> · {dur(hh.at - prev.at)} in previous stage</span>}
+                    </div>
+                    {hh.note && <p className="tl-note">{hh.note}</p>}
+                    {hh.file && <span className="tl-file"><Paperclip size={12} /> {hh.file}</span>}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </Card>
+      </div>
+
+      <div className="grid2">
+        <Card title="Sample record" hint="Registration details">
+          <dl className="dl">
+            <div><dt>Patient / client</dt><dd className="mono">{sample.patient}</dd></div>
+            <div><dt>Project</dt><dd>{sample.project}</dd></div>
+            <div><dt>Sample type</dt><dd>{sample.type}</dd></div>
+            <div><dt>Collected</dt><dd>{fmtDT(sample.collectedAt)}</dd></div>
+            <div><dt>Received</dt><dd>{fmtDT(sample.receivedAt)}</dd></div>
+            <div><dt>Requested tests</dt><dd>{sample.tests.join(", ")}</dd></div>
+            <div><dt>Origin</dt><dd>{sample.site}</dd></div>
+            <div><dt>Barcode</dt><dd className="mono">{sample.id}</dd></div>
+          </dl>
+        </Card>
+
+        <Card title="Scan history" hint={`${sample.scans.length} scans recorded`}>
+          {sample.scans.length === 0
+            ? <Empty text="No scans yet. Scanning this label from the Scan screen records the reader, user and time." />
+            : (
+              <div className="rows">
+                {[...sample.scans].sort((a, b) => b.at - a.at).map((sc, k) => (
+                  <div key={k} className="row static">
+                    <ScanLine size={14} className="muted" />
+                    <span>{sc.location}</span>
+                    <span className="muted">{sc.device}</span>
+                    <span className="row-mid" />
+                    <Avatar id={sc.by} size={20} />
+                    <span className="muted mono small">{fmtDT(sc.at)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+        </Card>
+      </div>
+
+      {showLabel && <LabelModal sample={sample} onClose={() => setShowLabel(false)} />}
+    </div>
+  );
+}
+
+function LabelModal({ sample, onClose }) {
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <header className="sheet-h"><b>Print label</b><button className="ghost" onClick={onClose}><X size={16} /></button></header>
+        <div className="label" id="print-label">
+          <div className="label-top">
+            <span className="mono strong">{sample.id}</span>
+            <span>{sample.priority}</span>
+          </div>
+          <Barcode value={sample.id} />
+          <div className="label-grid">
+            <span>{sample.patient}</span><span>{sample.project}</span>
+            <span>{sample.type}</span><span>{fmtDate(sample.collectedAt)}</span>
+          </div>
+        </div>
+        <p className="sheet-note">
+          Code 39 is rendered in the browser for cryo-safe 25×50 mm labels. QR labels (with the full
+          specimen URL) are produced by the print service so DataMatrix and 2D symbologies stay consistent
+          across Zebra and Brady printers.
+        </p>
+        <div className="sheet-foot">
+          <button className="btn" onClick={() => window.print()}><Printer size={14} /> Send to printer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  SCAN                                                               */
+/* ------------------------------------------------------------------ */
+
+function ScanView({ state, onOpen, onScan, me, onAdvance }) {
+  const { samples, stages } = state;
+  const [code, setCode] = useState("");
+  const [found, setFound] = useState(null);
+  const [err, setErr] = useState("");
+  const inputRef = useRef(null);
+  const bufRef = useRef({ txt: "", t: 0 });
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Handheld scanners behave like fast keyboards ending in Enter — capture that anywhere on the page.
+  useEffect(() => {
+    function onKey(e) {
+      const tag = (e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      const now = Date.now();
+      if (now - bufRef.current.t > 120) bufRef.current.txt = "";
+      bufRef.current.t = now;
+      if (e.key === "Enter" && bufRef.current.txt.length > 4) {
+        lookup(bufRef.current.txt.trim(), "Handheld scanner");
+        bufRef.current.txt = "";
+      } else if (e.key.length === 1) bufRef.current.txt += e.key;
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  function lookup(raw, device = "Manual entry") {
+    const v = raw.trim().toUpperCase();
+    const s = samples.find((x) => x.id.toUpperCase() === v);
+    if (!s) { setErr(`No sample matches ${v}. Check the label or search the register.`); setFound(null); return; }
+    setErr(""); setFound(s.id); onScan(s, device);
+  }
+
+  const s = samples.find((x) => x.id === found);
+  const i = s ? stageIdx(stages, s.stage) : -1;
+  const next = s && i < stages.length - 1 ? stages[i + 1] : null;
+  const can = next && next.roles.includes(me.role);
+
+  return (
+    <div className="stack scan">
+      <div className="scanbox">
+        <div className="viewfinder">
+          <ScanLine size={30} strokeWidth={1.4} />
+          <p><b>Point the camera at a label</b></p>
+          <span>In production the phone camera decodes Code 128 and QR through ZXing. In this preview,
+            type or paste a barcode below — a USB or Bluetooth scanner also works anywhere on this screen.</span>
+        </div>
+        <div className="scan-input">
+          <input ref={inputRef} value={code} onChange={(e) => setCode(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && lookup(code)}
+            placeholder="SMP-2026-1004" className="mono" />
+          <button className="btn" onClick={() => lookup(code)}>Open sample</button>
+        </div>
+        {err && <p className="err"><AlertTriangle size={14} /> {err}</p>}
+        <div className="recent">
+          <label>Recently registered</label>
+          <div className="chips">
+            {samples.slice(0, 6).map((x) => (
+              <button key={x.id} className="chip mono" onClick={() => { setCode(x.id); lookup(x.id, "Phone camera"); }}>{x.id}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {s && (
+        <section className="card hit">
+          <div className="card-b">
+            <div className="hit-top">
+              <div>
+                <div className="mono strong big">{s.id}</div>
+                <p className="muted">{s.patient} · {s.project} · {s.tests.join(", ")}</p>
+              </div>
+              <HealthDot state={health(s, stages)} />
+            </div>
+            <StageTrack sample={s} stages={stages} />
+            <div className="hit-actions">
+              {next && (
+                <button className="btn big-btn" disabled={!can} onClick={() => onAdvance(s, "Updated at the bench via scan")}>
+                  {can ? `Advance to ${next.name}` : `${ROLES[me.role]} cannot sign this step`}
+                </button>
+              )}
+              <button className="btn-ghost" onClick={() => onOpen(s.id)}>Open full record <ChevronRight size={14} /></button>
+            </div>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  REGISTER                                                           */
+/* ------------------------------------------------------------------ */
+
+function RegisterView({ state, onRegister, onOpen }) {
+  const blank = {
+    patient: "", project: PROJECTS[0], type: TYPES[0], collected: fmtDate(Date.now()),
+    tests: [TESTS[0]], priority: "Routine", owner: "u2", site: "Central hospital", note: "",
+  };
+  const [f, setF] = useState(blank);
+  const [made, setMade] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  function submit() {
+    if (!f.patient.trim()) return;
+    const id = onRegister(f);
+    setMade(id); setF(blank);
+  }
+
+  return (
+    <div className="stack reg">
+      <div className="grid2">
+        <Card title="New sample" hint="The barcode is issued when you save">
+          <div className="form">
+            <Field label="Patient / client reference">
+              <input value={f.patient} onChange={(e) => set("patient", e.target.value)} placeholder="PT-2026-0501" className="mono" />
+            </Field>
+            <div className="frow">
+              <Field label="Project">
+                <select value={f.project} onChange={(e) => set("project", e.target.value)}>
+                  {PROJECTS.map((p) => <option key={p}>{p}</option>)}
+                </select>
+              </Field>
+              <Field label="Sample type">
+                <select value={f.type} onChange={(e) => set("type", e.target.value)}>
+                  {TYPES.map((p) => <option key={p}>{p}</option>)}
+                </select>
+              </Field>
+            </div>
+            <div className="frow">
+              <Field label="Collection date">
+                <input type="date" value={f.collected} onChange={(e) => set("collected", e.target.value)} />
+              </Field>
+              <Field label="Priority">
+                <select value={f.priority} onChange={(e) => set("priority", e.target.value)}>
+                  <option>Routine</option><option>High</option><option>STAT</option>
+                </select>
+              </Field>
+            </div>
+            <Field label="Requested tests">
+              <div className="checks">
+                {TESTS.map((t) => (
+                  <label key={t} className={f.tests.includes(t) ? "on" : ""}>
+                    <input type="checkbox" checked={f.tests.includes(t)}
+                      onChange={(e) => set("tests", e.target.checked ? [...f.tests, t] : f.tests.filter((x) => x !== t))} />
+                    {t}
+                  </label>
+                ))}
+              </div>
+            </Field>
+            <div className="frow">
+              <Field label="Assign to">
+                <select value={f.owner} onChange={(e) => set("owner", e.target.value)}>
+                  {USERS.filter((u) => !["readonly", "manager"].includes(u.role)).map((u) =>
+                    <option key={u.id} value={u.id}>{u.name} — {ROLES[u.role]}</option>)}
+                </select>
+              </Field>
+              <Field label="Origin">
+                <select value={f.site} onChange={(e) => set("site", e.target.value)}>
+                  {["Central hospital", "Oncology clinic", "External courier", "Paediatric ward", "Research partner"].map((x) => <option key={x}>{x}</option>)}
+                </select>
+              </Field>
+            </div>
+            <Field label="Receiving notes">
+              <textarea rows={2} value={f.note} onChange={(e) => set("note", e.target.value)}
+                placeholder="Condition on arrival, cold chain, volume" />
+            </Field>
+            <button className="btn wide" onClick={submit} disabled={!f.patient.trim()}>
+              Register sample and issue barcode
+            </button>
+          </div>
+        </Card>
+
+        <Card title="Label preview" hint={made ? "Ready to print" : "Appears once the sample is saved"}>
+          {made ? (
+            <div className="stack-sm">
+              <div className="label">
+                <div className="label-top"><span className="mono strong">{made}</span><span>{f.priority}</span></div>
+                <Barcode value={made} />
+                <div className="label-grid">
+                  <span>{state.samples[0].patient}</span><span>{state.samples[0].project}</span>
+                  <span>{state.samples[0].type}</span><span>{fmtDate(state.samples[0].collectedAt)}</span>
+                </div>
+              </div>
+              <div className="reg-done">
+                <CheckCircle2 size={16} />
+                <span><b>{made}</b> is on the register and sits in Received.</span>
+              </div>
+              <div className="hit-actions">
+                <button className="btn" onClick={() => window.print()}><Printer size={14} /> Print label</button>
+                <button className="btn-ghost" onClick={() => onOpen(made)}>Open record <ChevronRight size={14} /></button>
+              </div>
+            </div>
+          ) : (
+            <Empty text="Fill in the form and save. The system issues the next sequential ID, renders the barcode and starts the turnaround clock." />
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return <label className="field"><span>{label}</span>{children}</label>;
+}
+
+/* ------------------------------------------------------------------ */
+/*  AUDIT                                                              */
+/* ------------------------------------------------------------------ */
+
+function AuditView({ state }) {
+  const [q, setQ] = useState("");
+  const rows = state.audit.filter((a) =>
+    !q || [a.entity, a.action, userName(a.user), a.from, a.to].join(" ").toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div className="stack">
+      <div className="toolbar">
+        <div className="search">
+          <Search size={16} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by sample, user or action" />
+        </div>
+      </div>
+      <div className="card">
+        <div className="audit-head">
+          <span>Time</span><span>User</span><span>Record</span><span>Action</span><span>Previous</span><span>New</span>
+        </div>
+        <div className="audit-body">
+          {rows.slice(0, 300).map((a, i) => (
+            <div key={i} className="audit-row">
+              <span className="mono small">{fmtDT(a.at)}</span>
+              <span className="ar-user"><Avatar id={a.user} size={20} />{userName(a.user)}</span>
+              <span className="mono">{a.entity}</span>
+              <span>{a.action}</span>
+              <span className="muted">{a.from || "—"}</span>
+              <span className="strong">{a.to}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <p className="foot">The register keeps every change: who, when, the previous value and the new one.
+        Entries are append-only — nothing in this list can be edited or deleted from the interface.</p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  SETTINGS                                                           */
+/* ------------------------------------------------------------------ */
+
+function SettingsView({ state, onDays, onReset }) {
+  const total = targetTAT(state.stages) / DAY;
+  return (
+    <div className="stack">
+      <Card title="Workflow and turnaround targets" hint={`Total target ${total.toFixed(1)} days from receipt to sign-out`}>
+        <div className="cfg">
+          {state.stages.map((s) => (
+            <div key={s.id} className="cfg-row" style={{ "--lane": PHASE[s.phase].color }}>
+              <span className="cfg-swatch" />
+              <div className="cfg-name">{s.name}<i>{PHASE[s.phase].label}</i></div>
+              <div className="cfg-roles">{s.roles.map((r) => <Pill key={r}>{ROLES[r]}</Pill>)}</div>
+              <div className="cfg-days">
+                <input type="number" step="0.25" min="0" value={s.days}
+                  onChange={(e) => onDays(s.id, Math.max(0, parseFloat(e.target.value) || 0))} />
+                <span>days</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="foot">Changing a target recalculates every open sample's deadline immediately and is written to the audit trail.</p>
+      </Card>
+
+      <div className="grid2">
+        <Card title="Notification rules" hint="Sent over SMTP by the scheduler">
+          <ul className="rules">
+            <li><b>Sample overdue</b><span>Fires once the sample passes its total target. To owner and manager.</span></li>
+            <li><b>Stuck in stage</b><span>Fires at 1.5× the stage target. To owner.</span></li>
+            <li><b>Report completed</b><span>On sign-out. To requester and project lead.</span></li>
+            <li><b>New assignment</b><span>On registration or reassignment. To the new owner.</span></li>
+            <li><b>Daily summary</b><span>07:00 digest of overdue, due today and yesterday's throughput. To managers.</span></li>
+          </ul>
+        </Card>
+
+        <Card title="Roles" hint="Who can sign off which step">
+          <ul className="rules">
+            {Object.entries(ROLES).map(([k, v]) => (
+              <li key={k}><b>{v}</b><span>
+                {k === "readonly" ? "View and export only." :
+                  k === "manager" ? "Full visibility, reassignment, reports. No bench sign-off." :
+                    k === "admin" ? "Everything, including workflow configuration." :
+                      `Signs off: ${state.stages.filter((s) => s.roles.includes(k)).map((s) => s.name).join(", ")}.`}
+              </span></li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+
+      <Card title="Demo data" hint="This preview stores everything in your browser session">
+        <button className="btn-ghost" onClick={onReset}><RotateCcw size={14} /> Restore the sample set</button>
+      </Card>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  NOTIFICATIONS                                                      */
+/* ------------------------------------------------------------------ */
+
+function NotifDrawer({ notifs, read, onClose, onOpen, onReadAll }) {
+  const icon = { overdue: AlertTriangle, stuck: Clock, completed: CheckCircle2, assigned: User };
+  return (
+    <div className="modal right" onClick={onClose}>
+      <aside className="drawer" onClick={(e) => e.stopPropagation()}>
+        <header className="sheet-h">
+          <b>Notifications</b>
+          <div>
+            <button className="linkish" onClick={onReadAll}>Mark all read</button>
+            <button className="ghost" onClick={onClose}><X size={16} /></button>
+          </div>
+        </header>
+        <div className="drawer-b">
+          {notifs.length === 0 && <Empty text="Nothing needs your attention." />}
+          {notifs.map((n) => {
+            const I = icon[n.kind];
+            return (
+              <button key={n.key} className={`notif notif-${n.kind} ${read.includes(n.key) ? "read" : ""}`}
+                onClick={() => onOpen(n.sample)}>
+                <I size={16} />
+                <div>
+                  <b>{n.title}</b>
+                  <span>{n.body}</span>
+                  <i>{relTime(n.at)}</i>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  STYLES                                                             */
+/* ------------------------------------------------------------------ */
+
+function Styles() {
+  return (
+    <style>{`
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+.app{
+  --ink:#0C1418; --ink2:#3C5058; --muted:#7A8C93;
+  --paper:#EFF3F2; --card:#FFFFFF; --line:#DBE4E3; --line2:#EAF0EF;
+  --slate:#14242A; --slate2:#1E353D; --graphite:#5A7079;
+  --teal:#0F7A82; --fam:#2F6BE0; --hex:#17A06B; --hex-deep:#0F7A55; --rox:#DE4B34; --tam:#E0952A;
+  --r:10px;
+  font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  color:var(--ink); background:var(--paper);
+  min-height:100vh; display:grid; grid-template-columns:212px 1fr; grid-template-rows:56px 1fr;
+  grid-template-areas:"rail top" "rail main";
+  font-size:14px; -webkit-font-smoothing:antialiased;
+}
+.app *{box-sizing:border-box}
+.app button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+.app input,.app select,.app textarea{font-family:inherit;font-size:13px;color:var(--ink);
+  background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;outline:none}
+.app input:focus,.app select:focus,.app textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(15,122,130,.13)}
+.app :focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace}
+.strong{font-weight:600} .muted{color:var(--muted)} .small{font-size:11px}
+.red{color:var(--rox)} .amber{color:var(--tam)} .green{color:var(--hex-deep)}
+h1,h2{font-family:'Space Grotesk',sans-serif;font-weight:700;letter-spacing:-.01em;margin:0}
+h1{font-size:17px} h2{font-size:14px}
+
+/* rail */
+.rail{grid-area:rail;background:var(--slate);color:#CFE0E2;display:flex;flex-direction:column;padding:14px 10px}
+.brand{display:flex;gap:10px;align-items:center;padding:4px 6px 18px}
+.brand-mark{display:grid;grid-template-columns:3px 3px 3px 3px;gap:2px;align-items:end;height:22px}
+.brand-mark span{width:3px;border-radius:1px}
+.brand-mark span:nth-child(1){height:22px;background:var(--fam)}
+.brand-mark span:nth-child(2){height:13px;background:var(--hex)}
+.brand-mark span:nth-child(3){height:18px;background:var(--tam)}
+.brand-mark span:nth-child(4){height:9px;background:var(--rox)}
+.brand-txt b{font-family:'Space Grotesk',sans-serif;font-size:15px;letter-spacing:.14em;color:#fff;display:block;line-height:1}
+.brand-txt i{font-style:normal;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:#7FA0A5}
+.rail nav{display:flex;flex-direction:column;gap:2px}
+.rail-btn{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:13px;color:#A9C2C6;text-align:left;transition:.15s}
+.rail-btn:hover{background:var(--slate2);color:#fff}
+.rail-btn.on{background:var(--slate2);color:#fff;box-shadow:inset 2px 0 0 var(--teal)}
+.rail-foot{margin-top:auto;padding-top:14px;border-top:1px solid rgba(255,255,255,.09)}
+.rail-lbl{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#6E9096;display:block;margin-bottom:5px}
+.who{width:100%;background:var(--slate2);border-color:rgba(255,255,255,.12);color:#DCEAEB;font-size:11.5px;padding:7px 8px}
+
+/* topbar */
+.topbar{grid-area:top;background:var(--card);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;padding:0 18px;position:sticky;top:0;z-index:20}
+.tb-right{display:flex;align-items:center;gap:12px}
+.ghost{display:inline-flex;align-items:center;gap:5px;padding:6px 8px;border-radius:7px;color:var(--ink2);font-size:13px}
+.ghost:hover{background:var(--line2)}
+.bell{position:relative}
+.bell em{position:absolute;top:1px;right:1px;background:var(--rox);color:#fff;font-style:normal;font-size:9px;
+  min-width:15px;height:15px;border-radius:8px;display:grid;place-items:center;padding:0 3px;font-weight:600}
+.ava{background:var(--slate2);color:#DDEDEE;border-radius:50%;display:inline-grid;place-items:center;
+  font-weight:600;letter-spacing:.03em;flex:none;font-family:'IBM Plex Mono',monospace}
+
+/* layout */
+.main{grid-area:main;padding:18px;overflow-y:auto}
+.stack{display:flex;flex-direction:column;gap:14px;max-width:1180px;margin:0 auto;padding-bottom:40px}
+.stack-sm{display:flex;flex-direction:column;gap:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.tabbar{display:none}
+
+/* cards */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.card-h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:13px 15px 0}
+.card-h p{margin:2px 0 0;font-size:11.5px;color:var(--muted)}
+.card-b{padding:13px 15px 15px}
+.foot{font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.5}
+.empty{font-size:12.5px;color:var(--muted);margin:6px 0;line-height:1.6}
+
+/* kpis */
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 13px;position:relative;overflow:hidden}
+.kpi:before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--graphite)}
+.kpi-warn:before{background:var(--tam)} .kpi-late:before{background:var(--rox)} .kpi-ok:before{background:var(--hex)}
+.kpi-label{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
+.kpi-val{font-family:'Space Grotesk',sans-serif;font-size:27px;font-weight:700;line-height:1.25;letter-spacing:-.02em}
+.kpi-val i{font-style:normal;font-size:13px;color:var(--muted);margin-left:2px}
+.kpi-sub{font-size:11px;color:var(--muted)}
+
+/* the signature: stage track */
+.track{display:flex;gap:3px;align-items:flex-end;height:26px}
+.track-c{height:12px;gap:2px}
+.lane{flex:1;border-radius:2px;position:relative;background:var(--line2);height:12px;transition:.2s}
+.track:not(.track-c) .lane{height:14px}
+.lane-done{background:var(--lane);opacity:.42}
+.lane-cur{background:var(--lane);height:22px !important;box-shadow:0 0 0 2px rgba(15,122,130,.14)}
+.track-c .lane-cur{height:12px !important}
+.lane-late.lane-cur{background:var(--rox);box-shadow:0 0 0 2px rgba(222,75,52,.18)}
+.lane-tick{position:absolute;left:0;right:0;bottom:-11px;text-align:center;font-size:7px;color:var(--ink2)}
+.track-legend{display:flex;gap:3px;margin-top:14px}
+.track-legend span{flex:1;font-size:8.5px;text-align:center;color:var(--muted);line-height:1.25;
+  text-transform:uppercase;letter-spacing:.04em}
+.track-legend .on{color:var(--ink);font-weight:600}
+.track-legend .past{color:var(--ink2)}
+
+/* charts */
+.ladder{display:flex;flex-direction:column;gap:7px}
+.ladder-row{display:grid;grid-template-columns:118px 1fr 26px;gap:9px;align-items:center}
+.ladder-label{font-size:11.5px;color:var(--ink2);text-align:right}
+.ladder-bar{background:var(--line2);border-radius:3px;height:15px;overflow:hidden}
+.ladder-fill{height:100%;border-radius:3px;transition:width .4s}
+.ladder-val{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600}
+.cols{width:100%;display:block}
+.axis{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-top:5px;font-family:'IBM Plex Mono',monospace}
+.paired{display:flex;flex-direction:column;gap:8px}
+.paired-row{display:grid;grid-template-columns:112px 1fr 74px;gap:9px;align-items:center}
+.paired-label{font-size:11.5px;color:var(--ink2);text-align:right}
+.paired-track{position:relative;height:16px}
+.paired-target{position:absolute;top:0;bottom:0;background:var(--line2);border-right:2px solid var(--graphite);border-radius:3px 0 0 3px}
+.paired-actual{position:absolute;top:4px;bottom:4px;background:var(--teal);border-radius:2px}
+.paired-actual.over{background:var(--rox)}
+.paired-val{font-family:'IBM Plex Mono',monospace;font-size:11.5px;text-align:right}
+.load{display:flex;flex-direction:column;gap:9px}
+.load-row{display:grid;grid-template-columns:26px 1fr 1.3fr auto;gap:9px;align-items:center}
+.load-name{font-size:12px;line-height:1.2}
+.load-name i{display:block;font-style:normal;font-size:10px;color:var(--muted)}
+.load-bar{position:relative;height:14px;background:var(--line2);border-radius:3px;overflow:hidden}
+.load-fill{position:absolute;inset:0 auto 0 0;background:var(--fam);opacity:.72}
+.load-late{position:absolute;inset:0 auto 0 0;background:var(--rox)}
+.load-val{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600}
+.load-val em{font-style:normal;font-size:10px;color:var(--rox)}
+
+/* rows */
+.rows{display:flex;flex-direction:column}
+.row{display:flex;align-items:center;gap:9px;padding:9px 4px;border-bottom:1px solid var(--line2);
+  font-size:12.5px;text-align:left;width:100%}
+.row:last-child{border-bottom:none}
+.row:not(.static):hover{background:var(--line2)}
+.row-mid{flex:1;color:var(--ink2)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.dot-ok{background:var(--hex)} .dot-warn{background:var(--tam)} .dot-late{background:var(--rox)}
+.pill{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;padding:2px 6px;border-radius:4px;
+  background:var(--line2);color:var(--ink2);font-weight:600;white-space:nowrap}
+.pill-warn{background:#FBF0DC;color:#8A5C10} .pill-late{background:#FBE3DE;color:#9A2E1B}
+
+/* toolbar */
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.search{flex:1;min-width:230px;display:flex;align-items:center;gap:7px;background:var(--card);
+  border:1px solid var(--line);border-radius:8px;padding:0 10px;color:var(--muted)}
+.search input{border:none;flex:1;padding:9px 0;background:none}
+.search input:focus{box-shadow:none}
+.filters{display:flex;gap:7px;flex-wrap:wrap}
+.count{font-size:11.5px;color:var(--muted);margin:0}
+.linkish{color:var(--teal);font-size:11.5px;text-decoration:underline;margin-left:8px}
+.btn{background:var(--teal);color:#fff;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:600;
+  display:inline-flex;align-items:center;gap:6px;justify-content:center;transition:.15s}
+.btn:hover{background:#0C666D} .btn:disabled{background:var(--line);color:var(--muted);cursor:not-allowed}
+.btn.wide{width:100%} .big-btn{padding:14px;font-size:14px;flex:1}
+.btn-ghost{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 12px;
+  font-size:12.5px;display:inline-flex;align-items:center;gap:6px}
+.btn-ghost:hover{border-color:var(--ink2)}
+
+/* table */
+.tbl{display:flex;flex-direction:column;gap:6px}
+.trow{display:flex;background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.trow-late{border-left:3px solid var(--rox)} .trow-warn{border-left:3px solid var(--tam)}
+.trow-ok{border-left:3px solid var(--line)}
+.trow-main{flex:1;display:grid;grid-template-columns:186px 1.25fr 150px 210px;gap:12px;align-items:center;
+  padding:11px 13px;text-align:left}
+.trow-main:hover{background:var(--line2)}
+.trow-id{display:flex;align-items:center;gap:7px}
+.trow-meta{display:flex;gap:6px;font-size:12px;align-items:center;flex-wrap:wrap}
+.sep{color:var(--line)}
+.trow-tail{display:flex;align-items:center;gap:9px;justify-content:flex-end;font-size:11.5px}
+.stage-name{font-size:11.5px;color:var(--ink2);font-weight:500}
+.quick{width:42px;border-left:1px solid var(--line2);color:var(--teal);display:grid;place-items:center}
+.quick:hover{background:var(--teal);color:#fff}
+
+/* detail */
+.det-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}
+.det-id{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600}
+.det-head h2{font-size:19px;margin:5px 0 3px}
+.det-sub{font-size:12.5px;color:var(--muted);margin:0}
+.statline{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding-bottom:13px;border-bottom:1px solid var(--line2)}
+.statline label{display:block;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.statline b{font-size:13px;font-family:'IBM Plex Mono',monospace}
+.advance{margin-top:13px;display:flex;flex-direction:column;gap:9px}
+.advance textarea{width:100%;resize:vertical}
+.adv-foot{display:flex;gap:9px;align-items:center}
+.attach{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2);
+  border:1px dashed var(--line);border-radius:8px;padding:9px 11px;cursor:pointer;white-space:nowrap}
+.attach input{display:none}
+.assign{margin-top:13px;padding-top:12px;border-top:1px solid var(--line2);display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.assign label{font-size:11.5px;color:var(--muted)}
+.assign i{font-size:11px;font-style:normal}
+.done-note{display:flex;gap:8px;align-items:center;margin-top:13px;padding:11px;border-radius:8px;
+  background:#E7F5EE;color:var(--hex-deep);font-size:12.5px}
+.timeline{list-style:none;margin:0;padding:0 0 0 16px;position:relative;max-height:420px;overflow-y:auto}
+.timeline:before{content:'';position:absolute;left:4px;top:6px;bottom:6px;width:1px;background:var(--line)}
+.timeline li{position:relative;padding:0 0 15px 6px}
+.tl-dot{position:absolute;left:-16px;top:4px;width:9px;height:9px;border-radius:50%;background:var(--lane);
+  box-shadow:0 0 0 3px var(--card)}
+.tl-top{display:flex;justify-content:space-between;gap:8px;font-size:12.5px}
+.tl-top span{font-size:11px;font-family:'IBM Plex Mono',monospace}
+.tl-meta{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink2);margin-top:4px}
+.tl-note{font-size:11.5px;background:var(--line2);border-radius:6px;padding:7px 9px;margin:6px 0 0;line-height:1.5}
+.tl-file{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--teal);margin-top:5px;font-family:'IBM Plex Mono',monospace}
+.dl{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:11px 14px}
+.dl dt{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.dl dd{margin:2px 0 0;font-size:12.5px}
+
+/* scan */
+.scan{max-width:640px}
+.scanbox{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.viewfinder{border:1.5px dashed var(--line);border-radius:10px;padding:26px 20px;text-align:center;color:var(--ink2);
+  background:linear-gradient(180deg,#FBFDFC,#F3F7F6)}
+.viewfinder p{margin:9px 0 5px;font-size:14px}
+.viewfinder span{font-size:11.5px;color:var(--muted);line-height:1.6;display:block;max-width:400px;margin:0 auto}
+.scan-input{display:flex;gap:8px;margin-top:14px}
+.scan-input input{flex:1;font-size:15px;letter-spacing:.05em;padding:12px}
+.err{display:flex;align-items:center;gap:6px;color:var(--rox);font-size:12px;margin:10px 0 0}
+.recent{margin-top:15px}
+.recent label{font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.chip{border:1px solid var(--line);border-radius:20px;padding:5px 11px;font-size:11.5px;background:var(--card)}
+.chip:hover{border-color:var(--teal);color:var(--teal)}
+.hit{border-color:var(--teal);box-shadow:0 6px 22px -14px rgba(12,20,24,.5)}
+.hit-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.hit-top p{margin:3px 0 0;font-size:12px}
+.big{font-size:17px}
+.hit-actions{display:flex;gap:9px;margin-top:15px;align-items:center;flex-wrap:wrap}
+
+/* register */
+.form{display:flex;flex-direction:column;gap:12px}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field>span{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.field textarea{resize:vertical}
+.checks{display:flex;flex-wrap:wrap;gap:6px}
+.checks label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:20px;
+  padding:6px 11px;font-size:11.5px;cursor:pointer;background:var(--card)}
+.checks label.on{border-color:var(--teal);background:#E9F4F4;color:#0B5A60;font-weight:500}
+.checks input{display:none}
+.reg-done{display:flex;gap:8px;align-items:center;background:#E7F5EE;color:var(--hex-deep);
+  padding:11px;border-radius:8px;font-size:12.5px}
+
+/* label */
+.label{border:1px solid var(--line);border-radius:6px;padding:11px;background:#fff;max-width:330px}
+.label-top{display:flex;justify-content:space-between;font-size:12px;margin-bottom:7px;
+  text-transform:uppercase;letter-spacing:.06em}
+.bc{margin:3px 0}
+.bc-text{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.19em;margin-top:3px}
+.label-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;font-size:9.5px;color:var(--ink2);margin-top:7px}
+
+/* audit */
+.audit-head,.audit-row{display:grid;grid-template-columns:130px 148px 130px 1fr 130px 130px;gap:10px;
+  padding:9px 15px;align-items:center;font-size:12px}
+.audit-head{background:var(--line2);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.audit-row{border-bottom:1px solid var(--line2)}
+.audit-body{max-height:600px;overflow-y:auto}
+.ar-user{display:flex;align-items:center;gap:6px}
+
+/* settings */
+.cfg{display:flex;flex-direction:column;gap:5px}
+.cfg-row{display:grid;grid-template-columns:4px 1fr 1.4fr 108px;gap:11px;align-items:center;
+  padding:8px 0;border-bottom:1px solid var(--line2)}
+.cfg-swatch{height:26px;border-radius:2px;background:var(--lane)}
+.cfg-name{font-size:12.5px;font-weight:500}
+.cfg-name i{display:block;font-style:normal;font-size:10px;color:var(--muted);font-weight:400}
+.cfg-roles{display:flex;gap:4px;flex-wrap:wrap}
+.cfg-days{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.cfg-days input{width:62px;text-align:right;font-family:'IBM Plex Mono',monospace}
+.rules{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.rules li b{font-size:12.5px;display:block}
+.rules li span{font-size:11.5px;color:var(--muted);line-height:1.5}
+
+/* overlays */
+.modal{position:fixed;inset:0;background:rgba(12,20,24,.42);display:grid;place-items:center;z-index:60;padding:18px}
+.modal.right{place-items:stretch;justify-content:flex-end;padding:0}
+.sheet{background:var(--card);border-radius:12px;max-width:400px;width:100%;overflow:hidden}
+.sheet-h{display:flex;justify-content:space-between;align-items:center;padding:13px 15px;border-bottom:1px solid var(--line2)}
+.sheet-h>div{display:flex;align-items:center;gap:4px}
+.sheet .label{margin:15px auto}
+.sheet-note{font-size:11px;color:var(--muted);padding:0 15px;line-height:1.6}
+.sheet-foot{padding:15px;display:flex;justify-content:flex-end}
+.drawer{background:var(--card);width:min(380px,100%);height:100%;display:flex;flex-direction:column;
+  animation:slide .22s ease-out}
+@keyframes slide{from{transform:translateX(22px);opacity:.4}to{transform:none;opacity:1}}
+.drawer-b{overflow-y:auto;padding:8px}
+.notif{display:flex;gap:10px;text-align:left;padding:11px;border-radius:8px;width:100%;align-items:flex-start}
+.notif:hover{background:var(--line2)}
+.notif.read{opacity:.5}
+.notif b{font-size:12.5px;display:block;line-height:1.35}
+.notif span{font-size:11.5px;color:var(--muted);display:block;margin-top:2px;line-height:1.4}
+.notif i{font-size:10px;color:var(--muted);font-style:normal;display:block;margin-top:4px;font-family:'IBM Plex Mono',monospace}
+.notif-overdue>svg{color:var(--rox)} .notif-stuck>svg{color:var(--tam)}
+.notif-completed>svg{color:var(--hex)} .notif-assigned>svg{color:var(--fam)}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--slate);color:#fff;
+  padding:11px 18px;border-radius:22px;font-size:12.5px;z-index:80;box-shadow:0 8px 26px -10px rgba(0,0,0,.5)}
+.boot{height:100vh;display:grid;place-items:center;gap:12px;font-family:'IBM Plex Sans',sans-serif;
+  color:#5A7079;font-size:12.5px;background:#EFF3F2}
+.boot-bar{width:150px;height:3px;background:#DBE4E3;border-radius:2px;overflow:hidden;position:relative}
+.boot-bar:after{content:'';position:absolute;inset:0;width:40%;background:#0F7A82;animation:sweep 1s infinite}
+@keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+
+/* responsive */
+@media (max-width:1080px){
+  .kpis{grid-template-columns:repeat(3,1fr)}
+  .trow-main{grid-template-columns:170px 1fr 120px}
+  .trow-main>*:nth-child(4){display:none}
+}
+@media (max-width:860px){
+  .app{grid-template-columns:1fr;grid-template-areas:"top" "main";padding-bottom:62px}
+  .rail{display:none}
+  .grid2{grid-template-columns:1fr}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .main{padding:12px}
+  .trow-main{grid-template-columns:1fr;gap:8px}
+  .hide-s{display:none}
+  .statline{grid-template-columns:1fr 1fr}
+  .frow{grid-template-columns:1fr}
+  .audit-head{display:none}
+  .audit-row{grid-template-columns:1fr 1fr;gap:4px;padding:11px 13px}
+  .track-legend{display:none}
+  .tabbar{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;bottom:0;left:0;right:0;z-index:40;
+    background:var(--slate);border-top:1px solid rgba(255,255,255,.08)}
+  .tabbar button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 0 10px;color:#87A6AB;font-size:9.5px}
+  .tabbar button.on{color:#fff}
+  .tabbar button.on svg{color:var(--teal)}
+  .adv-foot{flex-direction:column;align-items:stretch}
+  .det-head{flex-direction:column}
+}
+@media (prefers-reduced-motion:reduce){.app *{animation:none !important;transition:none !important}}
+@media print{
+  .rail,.topbar,.tabbar,.sheet-foot,.sheet-note,.sheet-h{display:none !important}
+  .app{display:block;background:#fff} .modal{position:static;background:none;display:block}
+  .sheet{box-shadow:none;max-width:none}
+}
+`}</style>
+  );
+}
