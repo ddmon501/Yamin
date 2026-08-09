@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PEBBLE MATH! Count, Add, Take Away</title>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#2c3a2f;
+    --moss:#7fb069;
+    --sand:#f2e3c6;
+    --stone:#8fa3b0;
+    --berry:#e0607e;
+    --sun:#f6bd60;
+    --cream:#fdf9f0;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:var(--ink);font-family:'Nunito',sans-serif}
+  button{font-family:'Nunito',sans-serif}
+
+  /* ---------- Start screen ---------- */
+  #startScreen{
+    position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:18px;text-align:center;
+    background:
+      radial-gradient(circle at 15% 85%, rgba(127,176,105,.35), transparent 45%),
+      radial-gradient(circle at 85% 15%, rgba(246,189,96,.25), transparent 45%),
+      var(--ink);
+  }
+  #startScreen h1{
+    font-family:'Bangers',cursive;
+    font-size:clamp(46px,10vw,104px);
+    letter-spacing:4px;line-height:.95;
+    color:var(--sun);
+    -webkit-text-stroke:3px var(--ink);
+    text-shadow:0 6px 0 var(--ink),0 0 30px rgba(246,189,96,.5);
+    transform:rotate(-2deg);
+  }
+  #startScreen h1 span{color:var(--moss);text-shadow:0 6px 0 var(--ink),0 0 30px rgba(127,176,105,.55)}
+  #startScreen p{color:var(--cream);font-weight:700;font-size:clamp(14px,2.3vw,18px);max-width:600px;padding:0 18px}
+
+  .modeRow{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  .modeBtn{
+    font-family:'Bangers',cursive;font-size:clamp(18px,3vw,26px);letter-spacing:2px;
+    color:var(--cream);background:rgba(253,249,240,.08);
+    border:3px solid var(--cream);border-radius:16px;padding:12px 22px;cursor:pointer;
+    transition:transform .12s, background .12s;
+  }
+  .modeBtn .emo{display:block;font-size:30px}
+  .modeBtn:hover{transform:scale(1.05)}
+  .modeBtn.sel{background:var(--moss);color:var(--ink);border-color:var(--ink);box-shadow:0 5px 0 var(--ink)}
+  .modeBtn:focus-visible{outline:4px solid var(--sun);outline-offset:3px}
+
+  .startRow{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  .goBtn{
+    font-family:'Bangers',cursive;font-size:clamp(20px,3.4vw,30px);letter-spacing:2px;
+    color:var(--ink);border:4px solid var(--ink);border-radius:999px;
+    padding:12px 34px;cursor:pointer;box-shadow:0 6px 0 var(--ink);
+    transition:transform .12s;
+  }
+  .goBtn:hover{transform:scale(1.05)}
+  .goBtn:active{transform:translateY(4px);box-shadow:0 2px 0 var(--ink)}
+  .goBtn:focus-visible{outline:4px solid var(--sun);outline-offset:4px}
+  #camBtn{background:linear-gradient(180deg,var(--sun),#e79f2f)}
+  #touchBtn{background:linear-gradient(180deg,#cfd8de,var(--stone))}
+  #loadMsg{color:var(--sun);font-weight:900;min-height:22px}
+
+  /* ---------- Game stage ---------- */
+  #stage{position:fixed;inset:0;display:none;background:#3c4f3f}
+  video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  #fx{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+
+  #hud{
+    position:absolute;top:0;left:0;right:0;padding:10px 14px;
+    display:flex;align-items:center;justify-content:space-between;gap:10px;pointer-events:none;
+  }
+  .badge{
+    font-family:'Bangers',cursive;letter-spacing:2px;
+    background:rgba(44,58,47,.78);border:3px solid var(--cream);border-radius:14px;
+    padding:5px 14px;color:var(--cream);font-size:clamp(15px,2.6vw,22px);
+    text-shadow:0 2px 0 var(--ink);
+  }
+  #stars{color:var(--sun)}
+  #modeSwitch{display:flex;gap:8px;pointer-events:auto}
+  .miniBtn{
+    font-family:'Bangers',cursive;letter-spacing:1px;font-size:clamp(13px,2.2vw,18px);
+    background:rgba(44,58,47,.78);color:var(--cream);
+    border:3px solid var(--cream);border-radius:12px;padding:5px 12px;cursor:pointer;
+  }
+  .miniBtn.sel{background:var(--moss);color:var(--ink)}
+
+  #prompt{
+    position:absolute;bottom:14px;left:50%;transform:translateX(-50%) rotate(-1deg);
+    font-family:'Bangers',cursive;font-size:clamp(17px,3vw,26px);letter-spacing:2px;
+    color:var(--cream);background:rgba(44,58,47,.82);border:3px solid var(--cream);
+    border-radius:14px;padding:7px 20px;pointer-events:none;
+    text-shadow:0 2px 0 var(--ink);text-align:center;max-width:94%;
+  }
+</style>
+</head>
+<body>
+
+<div id="startScreen">
+  <h1>PEBBLE<br><span>MATH!</span></h1>
+  <p>Pinch your fingers to pick up pebbles and move them into the circles. Count out loud as you go!</p>
+  <div class="modeRow">
+    <button class="modeBtn sel" data-mode="count"><span class="emo">🔢</span>COUNTING</button>
+    <button class="modeBtn" data-mode="add"><span class="emo">➕</span>ADDING</button>
+    <button class="modeBtn" data-mode="sub"><span class="emo">➖</span>TAKE AWAY</button>
+  </div>
+  <p>You can play with the camera and your hands, or just with your finger on the screen.</p>
+  <div class="startRow">
+    <button class="goBtn" id="camBtn">PLAY WITH CAMERA</button>
+    <button class="goBtn" id="touchBtn">PLAY WITH TOUCH</button>
+  </div>
+  <div id="loadMsg"></div>
+</div>
+
+<div id="stage">
+  <video id="cam" playsinline muted></video>
+  <canvas id="fx"></canvas>
+  <div id="hud">
+    <div class="badge">PEBBLE MATH</div>
+    <div id="modeSwitch">
+      <button class="miniBtn sel" data-mode="count">🔢 COUNT</button>
+      <button class="miniBtn" data-mode="add">➕ ADD</button>
+      <button class="miniBtn" data-mode="sub">➖ TAKE AWAY</button>
+    </div>
+    <div class="badge" id="stars">⭐ 0</div>
+  </div>
+  <div id="prompt">Let's play!</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script>
+"use strict";
+
+/* =====================  SETUP  ===================== */
+const video = document.getElementById('cam');
+const canvas = document.getElementById('fx');
+const ctx = canvas.getContext('2d');
+const stage = document.getElementById('stage');
+const startScreen = document.getElementById('startScreen');
+const loadMsg = document.getElementById('loadMsg');
+const promptEl = document.getElementById('prompt');
+const starsEl = document.getElementById('stars');
+
+let W=0,H=0;
+function resize(){ W=canvas.width=window.innerWidth; H=canvas.height=window.innerHeight; if(game.mode) layoutRound(); }
+window.addEventListener('resize',resize);
+
+let audioCtx=null;
+function beep(freq,dur,type='sine',vol=0.15){
+  if(!audioCtx) return;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=type; o.frequency.value=freq;
+  g.gain.setValueAtTime(vol,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+dur);
+}
+function say(text){
+  try{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.92; u.pitch = 1.15;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+function rand(a,b){ return a+Math.random()*(b-a); }
+function now(){ return performance.now(); }
+
+/* =====================  GAME STATE  ===================== */
+const PEBBLE_COLORS = [
+  ['#aebfca','#6c8494'], // stone blue
+  ['#e8d3a9','#b99b62'], // sand
+  ['#a9c8a0','#6f9464'], // moss
+  ['#e6b3c0','#c07087'], // rose
+  ['#c9b8e0','#8f76ad'], // lavender
+];
+
+const game = {
+  usingCamera:false,
+  mode:null,            // 'count' | 'add' | 'sub'
+  phase:'playing',      // 'playing' | 'counting' | 'celebrate'
+  round:0,              // difficulty grows with rounds
+  stars:0,
+  a:0, b:0, target:0,
+  zones:{},             // named zones {x,y,r,label,color}
+  stableSince:0,        // for answer checking
+  countAnim:null,       // {list, idx, nextAt, doneAt}
+  banner:null,          // {text, t0}
+  hintCooldown:0,
+};
+const pebbles = [];
+const particles = [];
+const handsState = [];   // camera hands
+let pointerHand = null;  // touch/mouse hand
+
+function setPrompt(t){ promptEl.textContent = t; }
+function addStar(){
+  game.stars++;
+  starsEl.textContent = '⭐ ' + game.stars;
+}
+function confetti(x,y,n=40){
+  const colors=['#f6bd60','#e0607e','#7fb069','#8fa3b0','#fdf9f0'];
+  for(let i=0;i<n;i++){
+    const a=rand(0,Math.PI*2);
+    particles.push({x,y,vx:Math.cos(a)*rand(2,10),vy:Math.sin(a)*rand(2,10)-3,r:rand(3,7),life:1,color:colors[i%colors.length]});
+  }
+}
+
+/* =====================  ROUNDS  ===================== */
+function makePebble(x,y){
+  const c = PEBBLE_COLORS[Math.floor(Math.random()*PEBBLE_COLORS.length)];
+  return {
+    x, y, tx:x, ty:y,
+    r: rand(24,30),
+    squash: rand(0.75,0.9),
+    rot: rand(-0.4,0.4),
+    light:c[0], dark:c[1],
+    held:null, num:null, glow:0,
+  };
+}
+
+function newRound(){
+  pebbles.length = 0;
+  game.phase = 'playing';
+  game.countAnim = null;
+  game.banner = null;
+  game.stableSince = 0;
+  game.round++;
+
+  const lvl = Math.min(game.round, 8);
+  if(game.mode==='count'){
+    game.target = Math.min(2 + lvl, 10);
+  } else if(game.mode==='add'){
+    const sum = Math.min(3 + lvl, 10);
+    game.a = Math.max(1, Math.floor(rand(1, sum)));
+    game.b = sum - game.a;
+    if(game.b < 1){ game.a--; game.b = 1; }
+    game.target = game.a + game.b;
+  } else {
+    game.a = Math.min(3 + lvl, 10);
+    game.b = Math.max(1, Math.floor(rand(1, game.a)));
+    game.target = game.a - game.b;
+  }
+  layoutRound();
+  speakPrompt();
+}
+
+function layoutRound(){
+  game.zones = {};
+  const keepPositions = pebbles.length>0; // on resize we relay zones but keep pebbles roughly
+  if(game.mode==='count'){
+    game.zones.targetZ = { x:W*0.5, y:H*0.42, r:Math.min(W,H)*0.21, label:'PUT '+game.target+' HERE', color:'#f6bd60' };
+    if(!keepPositions){
+      for(let i=0;i<10;i++){
+        pebbles.push(makePebble(W*0.14 + (i%5)*Math.min(W,H)*0.09, H*0.84 + Math.floor(i/5)*54 + rand(-6,6)));
+      }
+    }
+    setPrompt('Put ' + game.target + ' pebbles in the circle! 🤏');
+  } else if(game.mode==='add'){
+    const r = Math.min(W,H)*0.14;
+    game.zones.leftZ  = { x:W*0.24, y:H*0.28, r, label:String(game.a), color:'#8fa3b0' };
+    game.zones.rightZ = { x:W*0.76, y:H*0.28, r, label:String(game.b), color:'#e0607e' };
+    game.zones.bowlZ  = { x:W*0.5,  y:H*0.72, r:Math.min(W,H)*0.2, label:'ADD THEM HERE', color:'#f6bd60' };
+    if(!keepPositions){
+      for(let i=0;i<game.a;i++){
+        const a = (i/game.a)*Math.PI*2;
+        pebbles.push(makePebble(game.zones.leftZ.x + Math.cos(a)*r*0.45, game.zones.leftZ.y + Math.sin(a)*r*0.45));
+      }
+      for(let i=0;i<game.b;i++){
+        const a = (i/game.b)*Math.PI*2;
+        pebbles.push(makePebble(game.zones.rightZ.x + Math.cos(a)*r*0.45, game.zones.rightZ.y + Math.sin(a)*r*0.45));
+      }
+    }
+    setPrompt(game.a + ' + ' + game.b + ' = ?  Move ALL pebbles to the big circle!');
+  } else { // sub
+    game.zones.homeZ = { x:W*0.38, y:H*0.5, r:Math.min(W,H)*0.22, label:String(game.a)+' PEBBLES', color:'#8fa3b0' };
+    game.zones.awayZ = { x:W*0.82, y:H*0.5, r:Math.min(W,H)*0.15, label:'TAKE '+game.b+' AWAY', color:'#e0607e' };
+    if(!keepPositions){
+      for(let i=0;i<game.a;i++){
+        const a = (i/game.a)*Math.PI*2;
+        const rr = game.zones.homeZ.r*0.55;
+        pebbles.push(makePebble(game.zones.homeZ.x + Math.cos(a)*rr*rand(0.4,1), game.zones.homeZ.y + Math.sin(a)*rr*rand(0.4,1)));
+      }
+    }
+    setPrompt(game.a + ' − ' + game.b + ' = ?  Move ' + game.b + ' pebbles to the red circle!');
+  }
+}
+
+function speakPrompt(){
+  if(game.mode==='count') say('Can you put ' + game.target + ' pebbles in the circle?');
+  else if(game.mode==='add') say('What is ' + game.a + ' plus ' + game.b + '? Move all the pebbles into the big circle and we will count them!');
+  else say('We have ' + game.a + ' pebbles. Take ' + game.b + ' away! Move them to the red circle.');
+}
+
+function inZone(p, z){
+  return z && Math.hypot(p.x-z.x, p.y-z.y) < z.r - p.r*0.4;
+}
+function countIn(zoneName){
+  const z = game.zones[zoneName];
+  return pebbles.filter(p => p.held===null && inZone(p,z)).length;
+}
+function anyHeld(){ return pebbles.some(p=>p.held!==null); }
+
+/* =====================  ANSWER CHECKING  ===================== */
+function checkAnswer(t){
+  if(game.phase!=='playing') return;
+
+  let done=false, over=false, countList=null, equation='', speakText='';
+
+  if(game.mode==='count'){
+    const n = countIn('targetZ');
+    done = (n === game.target);
+    over = (n > game.target);
+    if(done){
+      countList = pebbles.filter(p=>inZone(p,game.zones.targetZ));
+      equation = game.target + ' pebbles! ⭐';
+      speakText = 'pebbles! Great counting!';
+    }
+    if(over && t>game.hintCooldown){
+      setPrompt('Oops, too many! Take some out. We need ' + game.target + '.');
+      say('Too many! We only need ' + game.target + '.');
+      game.hintCooldown = t + 5000;
+    }
+  } else if(game.mode==='add'){
+    const n = countIn('bowlZ');
+    done = (n === game.target);
+    if(done){
+      countList = pebbles.filter(p=>inZone(p,game.zones.bowlZ));
+      equation = game.a + ' + ' + game.b + ' = ' + game.target + '!';
+      speakText = game.a + ' plus ' + game.b + ' equals ' + game.target + '! Amazing!';
+    }
+  } else {
+    const away = countIn('awayZ');
+    done = (away === game.b);
+    over = (away > game.b);
+    if(done){
+      countList = pebbles.filter(p=>p.held===null && !inZone(p,game.zones.awayZ));
+      equation = game.a + ' − ' + game.b + ' = ' + game.target + '!';
+      speakText = game.a + ' minus ' + game.b + ' equals ' + game.target + '! Well done!';
+    }
+    if(over && t>game.hintCooldown){
+      setPrompt('That is too many! Put one back. Take away only ' + game.b + '.');
+      say('Too many! Put one back.');
+      game.hintCooldown = t + 5000;
+    }
+  }
+
+  if(done && !anyHeld()){
+    if(!game.stableSince) game.stableSince = t;
+    if(t - game.stableSince > 900){
+      startCounting(countList, equation, speakText);
+    }
+  } else {
+    game.stableSince = 0;
+  }
+}
+
+function startCounting(list, equation, speakText){
+  game.phase = 'counting';
+  pebbles.forEach(p=>{ p.num=null; p.glow=0; });
+  game.countAnim = { list:[...list], idx:0, nextAt:now()+400, equation, speakText };
+  setPrompt('Let\'s count together!');
+  say("Let's count!");
+}
+
+function updateCounting(t){
+  const ca = game.countAnim;
+  if(!ca) return;
+  if(ca.idx < ca.list.length){
+    if(t >= ca.nextAt){
+      const p = ca.list[ca.idx];
+      ca.idx++;
+      p.num = ca.idx;
+      p.glow = 1;
+      beep(340 + ca.idx*60, .18, 'sine', .18);
+      say(String(ca.idx));
+      ca.nextAt = t + 750;
+    }
+  } else if(!ca.finishAt){
+    ca.finishAt = t + 500;
+  } else if(t >= ca.finishAt && game.phase==='counting'){
+    game.phase = 'celebrate';
+    game.banner = { text: ca.equation, t0: t };
+    addStar();
+    confetti(W/2, H*0.35, 60);
+    beep(523,.15); setTimeout(()=>beep(659,.15),140); setTimeout(()=>beep(784,.3),280);
+    say(ca.speakText);
+    setPrompt('⭐ Wonderful! Next one coming...');
+    setTimeout(newRound, 3800);
+  }
+}
+
+/* =====================  HAND / POINTER GRABBING  ===================== */
+function toScreen(pt){ return { x:(1-pt.x)*W, y:pt.y*H }; }
+
+let mpHands = null;
+function setupHands(){
+  mpHands = new Hands({ locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+  mpHands.setOptions({ maxNumHands:2, modelComplexity:0, minDetectionConfidence:0.6, minTrackingConfidence:0.5 });
+  mpHands.onResults(res=>{
+    const newHands=[];
+    if(res.multiHandLandmarks){
+      res.multiHandLandmarks.forEach((lm,i)=>{
+        const thumb=toScreen(lm[4]), index=toScreen(lm[8]);
+        const gx=(thumb.x+index.x)/2, gy=(thumb.y+index.y)/2;
+        const handSize=Math.hypot(toScreen(lm[0]).x-toScreen(lm[9]).x, toScreen(lm[0]).y-toScreen(lm[9]).y);
+        const pinch = Math.hypot(thumb.x-index.x,thumb.y-index.y) < Math.max(34, handSize*0.45);
+        const prev = handsState[i];
+        newHands.push({ id:'h'+i, x:gx, y:gy, pinch, wasPinch: prev?prev.pinch:false });
+      });
+    }
+    handsState.length=0;
+    newHands.forEach(h=>handsState.push(h));
+  });
+}
+
+/* touch & mouse fallback (also works alongside camera) */
+canvas.addEventListener('pointerdown', e=>{
+  pointerHand = { id:'ptr', x:e.clientX, y:e.clientY, pinch:true, wasPinch:false };
+});
+canvas.addEventListener('pointermove', e=>{
+  if(pointerHand){ pointerHand.x=e.clientX; pointerHand.y=e.clientY; }
+});
+window.addEventListener('pointerup', ()=>{
+  if(pointerHand) pointerHand.pinch=false;
+});
+
+function allHands(){
+  const list=[...handsState];
+  if(pointerHand) list.push(pointerHand);
+  return list;
+}
+
+function updateGrabbing(){
+  if(game.phase!=='playing'){
+    pebbles.forEach(p=>p.held=null);
+    return;
+  }
+  const hs = allHands();
+  for(const h of hs){
+    const held = pebbles.find(p=>p.held===h.id);
+    if(h.pinch){
+      if(!held && !h.wasPinch){
+        let best=null,bestD=1e9;
+        for(const p of pebbles){
+          if(p.held!==null) continue;
+          const d=Math.hypot(p.x-h.x,p.y-h.y);
+          if(d < p.r*2 && d<bestD){ best=p; bestD=d; }
+        }
+        if(best){ best.held=h.id; beep(700,.05,'square',.08); }
+      }
+      if(held){ held.x=h.x; held.y=h.y; }
+    } else if(held){
+      held.held=null;
+      beep(420,.06,'sine',.08);
+    }
+    h.wasPinch=h.pinch;
+  }
+  // free pebbles held by hands that disappeared
+  const ids=new Set(hs.map(h=>h.id));
+  pebbles.forEach(p=>{ if(p.held!==null && !ids.has(p.held)) p.held=null; });
+  if(pointerHand && !pointerHand.pinch) pointerHand=null;
+}
+
+/* =====================  DRAWING  ===================== */
+function drawBackground(){
+  if(game.usingCamera) return; // video shows through
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#8fb996');
+  g.addColorStop(0.6,'#5f8f6b');
+  g.addColorStop(1,'#3c5a44');
+  ctx.fillStyle=g;
+  ctx.fillRect(0,0,W,H);
+  // soft grass tufts
+  ctx.fillStyle='rgba(44,58,47,.15)';
+  for(let i=0;i<14;i++){
+    const x=(i/14)*W + 20, y=H-10-(i%3)*8;
+    ctx.beginPath(); ctx.ellipse(x,y,26,8,0,0,Math.PI*2); ctx.fill();
+  }
+}
+
+function drawZones(t){
+  for(const key in game.zones){
+    const z=game.zones[key];
+    ctx.save();
+    ctx.translate(z.x,z.y);
+    ctx.strokeStyle=z.color;
+    ctx.lineWidth=6;
+    ctx.setLineDash([16,12]);
+    ctx.lineDashOffset = -t/40;
+    ctx.beginPath(); ctx.arc(0,0,z.r,0,Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(44,58,47,.25)';
+    ctx.beginPath(); ctx.arc(0,0,z.r,0,Math.PI*2); ctx.fill();
+    // label
+    ctx.font=`700 ${Math.max(16,z.r*0.16)}px Nunito`;
+    ctx.textAlign='center';
+    ctx.fillStyle='#fdf9f0';
+    ctx.strokeStyle='rgba(44,58,47,.9)';
+    ctx.lineWidth=4;
+    ctx.strokeText(z.label,0,-z.r-14);
+    ctx.fillText(z.label,0,-z.r-14);
+    // live count inside target-style zones
+    if(game.phase==='playing'){
+      const n=pebbles.filter(p=>p.held===null && inZone(p,z)).length;
+      ctx.font=`900 ${z.r*0.4}px Nunito`;
+      ctx.fillStyle='rgba(253,249,240,.35)';
+      ctx.fillText(String(n),0,z.r*0.15);
+    }
+    ctx.restore();
+  }
+  // plus / minus / equals symbols between zones
+  ctx.font=`900 ${Math.min(W,H)*0.08}px Nunito`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle='#fdf9f0';
+  ctx.strokeStyle='rgba(44,58,47,.9)'; ctx.lineWidth=6;
+  if(game.mode==='add'){
+    ctx.strokeText('+', W*0.5, H*0.28);
+    ctx.fillText('+', W*0.5, H*0.28);
+  } else if(game.mode==='sub'){
+    ctx.strokeText('−', W*0.62, H*0.5);
+    ctx.fillText('−', W*0.62, H*0.5);
+  }
+}
+
+function drawPebble(p,t){
+  ctx.save();
+  ctx.translate(p.x,p.y);
+  ctx.rotate(p.rot);
+  const lift = p.held!==null ? 1.12 : 1;
+  // shadow
+  ctx.fillStyle='rgba(0,0,0,.25)';
+  ctx.beginPath(); ctx.ellipse(0,p.r*0.75, p.r*0.9, p.r*0.3, 0,0,Math.PI*2); ctx.fill();
+  // stone body
+  const g=ctx.createRadialGradient(-p.r*0.3,-p.r*0.35,p.r*0.15, 0,0, p.r*1.15);
+  g.addColorStop(0,p.light);
+  g.addColorStop(1,p.dark);
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.ellipse(0,0,p.r*lift, p.r*p.squash*lift, 0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(44,58,47,.55)';
+  ctx.lineWidth=3;
+  ctx.stroke();
+  // highlight speck
+  ctx.fillStyle='rgba(255,255,255,.5)';
+  ctx.beginPath(); ctx.ellipse(-p.r*0.3,-p.r*0.32, p.r*0.18, p.r*0.1, -0.5,0,Math.PI*2); ctx.fill();
+  // glow ring when counted
+  if(p.glow>0){
+    ctx.strokeStyle=`rgba(246,189,96,${p.glow})`;
+    ctx.lineWidth=6;
+    ctx.beginPath(); ctx.arc(0,0,p.r*1.4,0,Math.PI*2); ctx.stroke();
+    p.glow=Math.max(0,p.glow-0.01);
+  }
+  ctx.restore();
+  // counting number
+  if(p.num!==null){
+    ctx.font=`900 ${p.r*1.3}px Nunito`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.strokeStyle='rgba(44,58,47,.95)'; ctx.lineWidth=6;
+    ctx.strokeText(String(p.num), p.x, p.y - p.r*1.9);
+    ctx.fillStyle='#f6bd60';
+    ctx.fillText(String(p.num), p.x, p.y - p.r*1.9);
+  }
+}
+
+function drawHandsCursor(t){
+  for(const h of allHands()){
+    ctx.save();
+    ctx.translate(h.x,h.y);
+    if(h.pinch){
+      ctx.strokeStyle='#7fb069'; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(0,0,24,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle='rgba(127,176,105,.25)';
+      ctx.beginPath(); ctx.arc(0,0,24,0,Math.PI*2); ctx.fill();
+    } else {
+      ctx.strokeStyle='rgba(253,249,240,.85)'; ctx.lineWidth=3;
+      ctx.setLineDash([8,8]);
+      ctx.beginPath(); ctx.arc(0,0,28+Math.sin(t/200)*4,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+}
+
+function drawBanner(t){
+  if(!game.banner) return;
+  const age=(t-game.banner.t0)/1000;
+  const scale = age<0.15 ? age/0.15 : 1;
+  ctx.save();
+  ctx.translate(W/2,H*0.2);
+  ctx.rotate(-0.04);
+  ctx.scale(scale,scale);
+  ctx.font=`${Math.min(W,H)*0.12}px Bangers, cursive`;
+  ctx.textAlign='center';
+  ctx.lineWidth=12; ctx.strokeStyle='#2c3a2f';
+  ctx.strokeText(game.banner.text,0,0);
+  ctx.fillStyle='#f6bd60';
+  ctx.fillText(game.banner.text,0,0);
+  ctx.restore();
+}
+
+/* =====================  MAIN LOOP  ===================== */
+function loop(t){
+  ctx.clearRect(0,0,W,H);
+  drawBackground();
+  drawZones(t);
+
+  updateGrabbing();
+  checkAnswer(t);
+  updateCounting(t);
+
+  // pebbles: held ones drawn last so they appear on top
+  pebbles.filter(p=>p.held===null).forEach(p=>drawPebble(p,t));
+  pebbles.filter(p=>p.held!==null).forEach(p=>drawPebble(p,t));
+
+  // confetti
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.15; p.life-=0.012;
+    if(p.life<=0){ particles.splice(i,1); continue; }
+    ctx.globalAlpha=p.life;
+    ctx.fillStyle=p.color;
+    ctx.fillRect(p.x,p.y,p.r,p.r*1.4);
+    ctx.globalAlpha=1;
+  }
+
+  drawHandsCursor(t);
+  drawBanner(t);
+  requestAnimationFrame(loop);
+}
+
+/* =====================  MODE SELECT & START  ===================== */
+let chosenMode='count';
+document.querySelectorAll('.modeBtn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.modeBtn').forEach(x=>x.classList.remove('sel'));
+    b.classList.add('sel');
+    chosenMode=b.dataset.mode;
+  });
+});
+document.querySelectorAll('#modeSwitch .miniBtn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('#modeSwitch .miniBtn').forEach(x=>x.classList.remove('sel'));
+    b.classList.add('sel');
+    game.mode=b.dataset.mode;
+    game.round=0;
+    newRound();
+  });
+});
+function syncModeButtons(){
+  document.querySelectorAll('#modeSwitch .miniBtn').forEach(x=>{
+    x.classList.toggle('sel', x.dataset.mode===game.mode);
+  });
+}
+
+async function startGame(withCamera){
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  game.usingCamera = withCamera;
+  game.mode = chosenMode;
+  game.round = 0;
+  if(withCamera){
+    loadMsg.textContent='Loading pebbles...';
+    try{
+      setupHands();
+      const camera=new Camera(video,{
+        onFrame: async ()=>{ await mpHands.send({image:video}); },
+        width:960,height:540
+      });
+      await camera.start();
+    }catch(err){
+      loadMsg.textContent='Camera could not start. Try "Play with touch" instead.';
+      console.error(err);
+      return;
+    }
+  } else {
+    video.style.display='none';
+  }
+  startScreen.style.display='none';
+  stage.style.display='block';
+  resize();
+  syncModeButtons();
+  newRound();
+  requestAnimationFrame(loop);
+}
+document.getElementById('camBtn').addEventListener('click',()=>startGame(true));
+document.getElementById('touchBtn').addEventListener('click',()=>startGame(false));
+resize();
+</script>
+</body>
+</html>
