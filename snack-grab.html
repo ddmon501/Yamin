@@ -95,8 +95,9 @@
     <div><span class="emo">✋</span><b>LET GO</b>Drop it down</div>
     <div><span class="emo">💨</span><b>SWING + LET GO</b>Throw it far!</div>
     <div><span class="emo">😋</span><b>BRING TO MOUTH</b>Eat it! Yum... or YUCK!</div>
+    <div><span class="emo">👊</span><b>PUNCH FAST</b>Bop the flying ducks!</div>
   </div>
-  <p>🍬 🍭 🍦 = +points &nbsp;&nbsp; 🐜 🕷️ = EWW! Throw them away instead!</p>
+  <p>🍬 🍭 🍦 = eat for points &nbsp;&nbsp; 🐜 🕷️ 🪱 🐍 = YUCK! Throw them! &nbsp;&nbsp; 🦆 = punch it for +25!</p>
   <button id="startBtn">START GAME</button>
   <div id="loadMsg"></div>
 </div>
@@ -157,6 +158,8 @@ const TYPES = {
   icecream: { emo:'🍦', good:true,  pts:20,  size:54, spawnW:2 },
   ant:      { emo:'🐜', good:false, pts:-15, size:38, spawnW:2 },
   spider:   { emo:'🕷️', good:false, pts:-25, size:48, spawnW:1.5 },
+  worm:     { emo:'🪱', good:false, pts:-10, size:44, spawnW:1.5 },
+  snake:    { emo:'🐍', good:false, pts:-20, size:52, spawnW:1 },
 };
 
 const items = [];
@@ -205,7 +208,99 @@ function spawnItem(){
     it.vy = 0;
     it.onFloor = true;
   }
+  if(type==='worm' || type==='snake'){ // wriggly critters slither in from the sides
+    it.wriggle = true;
+    const fromLeft = Math.random()<0.5;
+    it.x = fromLeft ? -50 : W+50;
+    it.y = rand(H*0.5, H-50);
+    it.vx = fromLeft ? rand(0.8,1.8) : rand(-1.8,-0.8);
+    it.vy = 0;
+  }
   items.push(it);
+}
+
+/* =====================  DUCKS (punch them!)  ===================== */
+const ducks = [];
+function spawnDuck(){
+  const fromLeft = Math.random()<0.5;
+  const baseY = rand(H*0.15, H*0.45);
+  ducks.push({
+    x: fromLeft ? -70 : W+70,
+    y: baseY, baseY,
+    vx: (fromLeft ? 1 : -1) * rand(3, 5),
+    vy: 0,
+    t: rand(0,1000),
+    size: 62,
+    hit: false,
+    rot: 0,
+  });
+  beep(600,.08,'square',.1); setTimeout(()=>beep(480,.08,'square',.1),110); // quack quack
+}
+
+function updateDucks(dt){
+  const t = now();
+  for(let i=ducks.length-1;i>=0;i--){
+    const d = ducks[i];
+    d.t += dt;
+    if(!d.hit){
+      d.x += d.vx;
+      d.y = d.baseY + Math.sin(d.t/280)*40;
+      if(Math.random()<0.004){ beep(620,.07,'square',.08); }
+      // punch check
+      for(const h of handsState){
+        if(h.punch && t > h.punchCd){
+          const dist = Math.hypot(h.kx-d.x, h.ky-d.y);
+          if(dist < d.size*1.2){
+            h.punchCd = t + 400;
+            d.hit = true;
+            d.vy = -4;
+            d.vx *= 0.3;
+            addScore(25);
+            showBig(['POW!!','QUACK!!','BOP!!'][Math.floor(Math.random()*3)], '#ff4fa3');
+            burst(d.x, d.y, '#ffffff', 16, 9);   // feathers
+            burst(d.x, d.y, '#ffd23f', 10, 7);
+            beep(150,.15,'square',.25); beep(900,.1,'sawtooth',.15);
+            setTip('Duck bopped! +25 points! 👊');
+          }
+        }
+      }
+      if(d.x<-100 || d.x>W+100) ducks.splice(i,1);
+    } else {
+      d.vy += 0.4;
+      d.y += d.vy;
+      d.x += d.vx;
+      d.rot += 0.25;
+      if(d.y > H-20){
+        burst(d.x, H-20, '#ffffff', 12, 6);
+        ducks.splice(i,1);
+      }
+    }
+  }
+}
+
+function drawDucks(t){
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(const d of ducks){
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    if(d.hit){
+      ctx.rotate(d.rot);
+    } else {
+      if(d.vx > 0) ctx.scale(-1,1); // face the way it flies
+      ctx.rotate(Math.sin(d.t/280)*0.12);
+      // little flap bounce
+      ctx.translate(0, Math.sin(d.t/90)*3);
+    }
+    ctx.font = `${d.size}px serif`;
+    ctx.shadowColor='rgba(255,255,255,.5)';
+    ctx.shadowBlur=10;
+    ctx.fillText(d.hit && Math.floor(t/100)%2 ? '💫' : '🦆', 0, 0);
+    ctx.restore();
+    if(d.hit){
+      ctx.font='26px serif';
+      ctx.fillText('💫', d.x, d.y - 46);
+    }
+  }
 }
 
 function burst(x,y,color,n=18,speed=8){
@@ -222,6 +317,17 @@ let face = null; // {x,y,w,h}
 let mouth = null; // {x,y}
 
 function toScreen(pt){ return { x:(1-pt.x)*W, y:pt.y*H }; }
+
+/* Finger is "up" when its tip is farther from the wrist than its middle joint */
+function fingerUp(lm, tip, pip){
+  const w = lm[0];
+  const dTip = Math.hypot(lm[tip].x-w.x, lm[tip].y-w.y);
+  const dPip = Math.hypot(lm[pip].x-w.x, lm[pip].y-w.y);
+  return dTip > dPip*1.12;
+}
+function isFist(lm){
+  return !fingerUp(lm,8,6) && !fingerUp(lm,12,10) && !fingerUp(lm,16,14) && !fingerUp(lm,20,18);
+}
 
 const mpHands = new Hands({ locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
 mpHands.setOptions({ maxNumHands:2, modelComplexity:0, minDetectionConfidence:0.6, minTrackingConfidence:0.5 });
@@ -252,7 +358,16 @@ mpHands.onResults(res=>{
         vx = prev.vx*0.5 + vx*0.5;
         vy = prev.vy*0.5 + vy*0.5;
       }
-      newHands.push({ x:gx, y:gy, pinch, vx, vy, t, holding: prev ? prev.holding : null, wasPinch: prev ? prev.pinch : false });
+      const kn = toScreen(lm[9]); // knuckle center, used for punching
+      const fist = isFist(lm);
+      const speed = Math.hypot(vx, vy);
+      const punch = fist && speed > 1000;
+      newHands.push({
+        x:gx, y:gy, kx:kn.x, ky:kn.y, pinch, fist, punch, vx, vy, t,
+        holding: prev ? prev.holding : null,
+        wasPinch: prev ? prev.pinch : false,
+        punchCd: prev ? prev.punchCd : 0
+      });
     });
   }
   handsState.length = 0;
@@ -286,6 +401,7 @@ function handleGrabbing(){
           best.held = hi;
           best.thread = false;
           best.onFloor = false;
+          best.wriggle = false;
           h.holding = best.type;
           popSound();
           setTip(best.good ? 'Got a ' + best.emo + '! Eat it or throw it!' : best.emo + ' EWW a bug! Throw it away!');
@@ -364,6 +480,15 @@ function updateItems(dt){
       it.x += Math.sin(it.wanderT/700)*0.4;
       continue;
     }
+    if(it.wriggle){
+      it.wanderT += dt;
+      it.x += it.vx;
+      it.y += Math.sin(it.wanderT/110)*2.4;
+      it.rot = Math.sin(it.wanderT/110)*0.45;
+      it.squish = 1 + Math.sin(it.wanderT/110)*0.18;
+      if(it.x<-90 || it.x>W+90) items.splice(i,1);
+      continue;
+    }
     if(it.type==='ant' && it.onFloor){
       it.wanderT += dt;
       it.x += it.vx;
@@ -408,6 +533,7 @@ function drawItems(t){
     ctx.save();
     ctx.translate(it.x, it.y);
     ctx.rotate(it.held!==null ? Math.sin(t/120)*0.15 : it.rot);
+    if(it.squish && it.held===null && it.wriggle) ctx.scale(it.squish, 2 - it.squish);
     const bounce = it.held!==null ? 1.15 : 1;
     ctx.font = `${it.size*bounce}px serif`;
     // glow behind good items
@@ -427,7 +553,15 @@ function drawHands(t){
   for(const h of handsState){
     ctx.save();
     ctx.translate(h.x, h.y);
-    if(h.pinch){
+    if(h.fist){
+      ctx.strokeStyle='#ff4fa3';
+      ctx.lineWidth=5;
+      ctx.beginPath(); ctx.arc(h.kx-h.x, h.ky-h.y, 32, 0, Math.PI*2); ctx.stroke();
+      ctx.fillStyle='rgba(255,79,163,.22)';
+      ctx.beginPath(); ctx.arc(h.kx-h.x, h.ky-h.y, 32, 0, Math.PI*2); ctx.fill();
+      ctx.font='24px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('👊', h.kx-h.x, h.ky-h.y - 46);
+    } else if(h.pinch){
       ctx.strokeStyle='#3ee6b0';
       ctx.lineWidth=4;
       ctx.beginPath(); ctx.arc(0,0,26,0,Math.PI*2); ctx.stroke();
@@ -500,6 +634,7 @@ function drawBigMsg(t){
 /* =====================  MAIN LOOP  ===================== */
 let lastT = 0;
 let spawnTimer = 0;
+let duckTimer = 4000;
 function loop(t){
   const dt = Math.min(t - lastT, 50);
   lastT = t;
@@ -512,7 +647,14 @@ function loop(t){
     spawnTimer = rand(900, 2000);
   }
 
+  duckTimer -= dt;
+  if(duckTimer <= 0 && ducks.length < 3){
+    spawnDuck();
+    duckTimer = rand(3500, 7000);
+  }
+
   updateItems(dt);
+  updateDucks(dt);
 
   // particles
   for(let i=particles.length-1;i>=0;i--){
@@ -526,6 +668,7 @@ function loop(t){
   }
 
   drawItems(t);
+  drawDucks(t);
   drawMouthTarget(t);
   drawHands(t);
   drawMunch(t);
