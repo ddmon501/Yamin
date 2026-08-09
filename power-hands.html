@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POWER HANDS! Anime Gesture Game</title>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#12102a;
+    --sky:#22d3ee;
+    --pink:#ff3d8b;
+    --gold:#ffc933;
+    --violet:#7c5cff;
+    --paper:#fdf6ec;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:var(--ink);font-family:'Nunito',sans-serif}
+
+  /* ---------- Start screen ---------- */
+  #startScreen{
+    position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:22px;text-align:center;
+    background:
+      repeating-conic-gradient(from 0deg at 50% 42%, rgba(255,255,255,.05) 0deg 6deg, transparent 6deg 14deg),
+      radial-gradient(circle at 50% 42%, #2b2470 0%, var(--ink) 62%);
+  }
+  #startScreen h1{
+    font-family:'Bangers',cursive;
+    font-size:clamp(52px,11vw,120px);
+    letter-spacing:4px;line-height:.95;
+    color:var(--gold);
+    -webkit-text-stroke:3px var(--ink);
+    text-shadow:0 6px 0 var(--ink),0 0 34px rgba(255,201,51,.55);
+    transform:rotate(-3deg);
+  }
+  #startScreen h1 span{color:var(--sky);text-shadow:0 6px 0 var(--ink),0 0 34px rgba(34,211,238,.6)}
+  #startScreen p{color:var(--paper);font-weight:700;font-size:clamp(14px,2.4vw,19px);max-width:560px;padding:0 18px}
+  #startBtn{
+    font-family:'Bangers',cursive;font-size:clamp(24px,4vw,36px);letter-spacing:2px;
+    color:var(--ink);background:linear-gradient(180deg,var(--gold),#ff9d1b);
+    border:4px solid var(--ink);border-radius:999px;padding:14px 44px;cursor:pointer;
+    box-shadow:0 7px 0 var(--ink),0 0 30px rgba(255,201,51,.45);
+    transition:transform .12s;
+  }
+  #startBtn:hover{transform:scale(1.06) rotate(-1deg)}
+  #startBtn:active{transform:translateY(5px);box-shadow:0 2px 0 var(--ink)}
+  #startBtn:focus-visible{outline:4px solid var(--sky);outline-offset:4px}
+
+  .moveCard{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    gap:10px;max-width:720px;width:92%;
+  }
+  .moveCard div{
+    background:rgba(253,246,236,.08);border:2px solid rgba(253,246,236,.25);
+    border-radius:14px;padding:10px 8px;color:var(--paper);font-size:13px;font-weight:700;
+  }
+  .moveCard b{display:block;font-family:'Bangers',cursive;font-size:19px;letter-spacing:1px;color:var(--sky);font-weight:400}
+  .moveCard .emo{font-size:26px;display:block;margin-bottom:2px}
+  #loadMsg{color:var(--gold);font-weight:900;min-height:22px}
+
+  /* ---------- Game stage ---------- */
+  #stage{position:fixed;inset:0;display:none;background:#000}
+  video{
+    position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+    transform:scaleX(-1);
+  }
+  #fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+  /* HUD */
+  #hud{
+    position:absolute;top:0;left:0;right:0;padding:12px 16px;
+    display:flex;align-items:center;gap:14px;pointer-events:none;
+  }
+  #hudTitle{
+    font-family:'Bangers',cursive;color:var(--gold);font-size:clamp(20px,3.4vw,32px);
+    letter-spacing:2px;-webkit-text-stroke:1.5px var(--ink);
+    text-shadow:0 3px 0 var(--ink);transform:rotate(-2deg);white-space:nowrap;
+  }
+  #meterWrap{
+    flex:1;max-width:420px;height:26px;border:3px solid var(--paper);
+    border-radius:999px;background:rgba(18,16,42,.65);overflow:hidden;
+    box-shadow:0 3px 0 rgba(0,0,0,.5);
+  }
+  #meterFill{
+    height:100%;width:0%;border-radius:999px;
+    background:linear-gradient(90deg,var(--sky),var(--violet),var(--pink),var(--gold));
+    background-size:300% 100%;animation:meterFlow 2s linear infinite;
+    transition:width .15s;
+  }
+  @keyframes meterFlow{to{background-position:300% 0}}
+  #meterLabel{
+    font-family:'Bangers',cursive;color:var(--paper);letter-spacing:1px;
+    font-size:15px;text-shadow:0 2px 0 var(--ink);
+  }
+  #gestureTag{
+    position:absolute;bottom:16px;left:50%;transform:translateX(-50%) rotate(-1.5deg);
+    font-family:'Bangers',cursive;font-size:clamp(18px,3vw,26px);letter-spacing:2px;
+    color:var(--paper);background:rgba(18,16,42,.72);border:3px solid var(--paper);
+    border-radius:14px;padding:6px 18px;pointer-events:none;
+    text-shadow:0 2px 0 var(--ink);min-width:180px;text-align:center;
+  }
+  @media (prefers-reduced-motion: reduce){
+    #meterFill{animation:none}
+  }
+</style>
+</head>
+<body>
+
+<div id="startScreen">
+  <h1>POWER<br><span>HANDS!</span></h1>
+  <p>Stand back so the camera can see your hands and face. Then do the moves below and watch your powers appear!</p>
+  <div class="moveCard">
+    <div><span class="emo">✋</span><b>OPEN HAND</b>Energy ball</div>
+    <div><span class="emo">✊</span><b>FIST</b>Charge power up</div>
+    <div><span class="emo">✌️</span><b>PEACE</b>Star sparkles</div>
+    <div><span class="emo">👏</span><b>CLAP</b>Shockwave boom</div>
+    <div><span class="emo">🙌</span><b>TWO PALMS</b>Mega beam</div>
+    <div><span class="emo">🤖</span><b>HANDS ON FACE</b>Robot mode!</div>
+  </div>
+  <button id="startBtn">START GAME</button>
+  <div id="loadMsg"></div>
+</div>
+
+<div id="stage">
+  <video id="cam" playsinline muted></video>
+  <canvas id="fx"></canvas>
+  <div id="hud">
+    <div id="hudTitle">POWER HANDS!</div>
+    <div id="meterWrap"><div id="meterFill"></div></div>
+    <div id="meterLabel">POWER <span id="meterPct">0</span>%</div>
+  </div>
+  <div id="gestureTag">Show me your hands!</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script>
+"use strict";
+
+/* =====================  BASIC SETUP  ===================== */
+const video   = document.getElementById('cam');
+const canvas  = document.getElementById('fx');
+const ctx     = canvas.getContext('2d');
+const stage   = document.getElementById('stage');
+const startScreen = document.getElementById('startScreen');
+const startBtn = document.getElementById('startBtn');
+const loadMsg  = document.getElementById('loadMsg');
+const gestureTag = document.getElementById('gestureTag');
+const meterFill = document.getElementById('meterFill');
+const meterPct  = document.getElementById('meterPct');
+
+let W = 0, H = 0;
+function resize(){
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* Simple sound with WebAudio (no files needed) */
+let audioCtx = null;
+function beep(freq, dur, type='sine', vol=0.15){
+  if(!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + dur);
+}
+
+/* =====================  GAME STATE  ===================== */
+const state = {
+  hands: [],          // [{x,y, palm:{x,y}, gesture, tips:[...]}]
+  face: null,         // {x,y,w,h} in screen pixels (mirrored)
+  power: 0,           // 0..100
+  robotUntil: 0,      // timestamp until robot mode is on
+  faceHoldStart: 0,   // when hands first touched face
+  lastPairDist: null, // for clap detection
+  lastPairTime: 0,
+  clapCooldown: 0,
+  shakes: 0,
+  bigText: null,      // {text, t0, color}
+};
+
+const particles = [];
+const rings = [];     // shockwave rings
+const stars = [];     // peace-sign stars
+const beams = [];     // mega beam
+const bolts = [];     // little lightning for robot
+
+function now(){ return performance.now(); }
+function rand(a,b){ return a + Math.random()*(b-a); }
+
+/* Map a normalized MediaPipe point to mirrored screen pixels */
+function toScreen(pt){
+  return { x: (1 - pt.x) * W, y: pt.y * H };
+}
+
+/* =====================  GESTURE LOGIC  ===================== */
+/* Finger is "up" when tip is farther from wrist than its middle joint */
+function fingerUp(lm, tip, pip){
+  const w = lm[0];
+  const dTip = Math.hypot(lm[tip].x - w.x, lm[tip].y - w.y);
+  const dPip = Math.hypot(lm[pip].x - w.x, lm[pip].y - w.y);
+  return dTip > dPip * 1.12;
+}
+function classifyHand(lm){
+  const index  = fingerUp(lm, 8, 6);
+  const middle = fingerUp(lm, 12, 10);
+  const ring   = fingerUp(lm, 16, 14);
+  const pinky  = fingerUp(lm, 20, 18);
+  const upCount = [index, middle, ring, pinky].filter(Boolean).length;
+
+  if(upCount >= 4) return 'open';
+  if(upCount === 0) return 'fist';
+  if(index && middle && !ring && !pinky) return 'peace';
+  return 'other';
+}
+function palmCenter(lm){
+  // average of wrist and finger bases
+  const ids = [0, 5, 9, 13, 17];
+  let x = 0, y = 0;
+  ids.forEach(i => { x += lm[i].x; y += lm[i].y; });
+  return { x: x/ids.length, y: y/ids.length };
+}
+
+/* =====================  MEDIAPIPE  ===================== */
+const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+hands.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
+
+const faceDet = new FaceDetection({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${f}` });
+faceDet.setOptions({ model: 'short', minDetectionConfidence: 0.6 });
+
+hands.onResults(res => {
+  state.hands = [];
+  if(res.multiHandLandmarks){
+    for(const lm of res.multiHandLandmarks){
+      const pc = toScreen(palmCenter(lm));
+      state.hands.push({
+        gesture: classifyHand(lm),
+        palm: pc,
+        tips: [4,8,12,16,20].map(i => toScreen(lm[i])),
+        wrist: toScreen(lm[0]),
+      });
+    }
+  }
+  handleGestures();
+});
+
+faceDet.onResults(res => {
+  if(res.detections && res.detections.length){
+    const b = res.detections[0].boundingBox;
+    const cx = (1 - b.xCenter) * W;
+    const cy = b.yCenter * H;
+    const w  = b.width  * W;
+    const h  = b.height * H;
+    state.face = { x: cx, y: cy, w, h };
+  } else {
+    state.face = null;
+  }
+});
+
+/* =====================  GESTURE EVENTS  ===================== */
+function setTag(t){ gestureTag.textContent = t; }
+function addPower(n){
+  state.power = Math.min(100, state.power + n);
+}
+function bigText(text, color){
+  state.bigText = { text, t0: now(), color };
+}
+
+function handleGestures(){
+  const t = now();
+  const hs = state.hands;
+  const robotOn = t < state.robotUntil;
+
+  /* ---- hands on face -> robot ---- */
+  if(state.face && hs.length > 0 && !robotOn){
+    const f = state.face;
+    const touching = hs.filter(h =>
+      Math.abs(h.palm.x - f.x) < f.w * 0.95 &&
+      Math.abs(h.palm.y - f.y) < f.h * 0.95
+    ).length;
+    if(touching >= 1){
+      if(!state.faceHoldStart) state.faceHoldStart = t;
+      const held = t - state.faceHoldStart;
+      setTag('TRANSFORMING... ' + Math.max(0, Math.ceil((700 - held)/100)));
+      if(held > 700){
+        state.robotUntil = t + 7000;
+        state.faceHoldStart = 0;
+        state.power = 100;
+        state.shakes = 20;
+        bigText('ROBO MODE!!', '#22d3ee');
+        for(let i=0;i<70;i++) spawnParticle(f.x, f.y, '#22d3ee', 9);
+        beep(200, .3, 'square', .2); setTimeout(()=>beep(400,.3,'square',.2),150);
+        setTimeout(()=>beep(800,.5,'square',.2),300);
+      }
+      return;
+    }
+  }
+  state.faceHoldStart = 0;
+
+  /* ---- clap: two hands rushing together ---- */
+  if(hs.length === 2){
+    const d = Math.hypot(hs[0].palm.x - hs[1].palm.x, hs[0].palm.y - hs[1].palm.y);
+    if(state.lastPairDist !== null){
+      const dt = (t - state.lastPairTime) / 1000;
+      const speed = (state.lastPairDist - d) / Math.max(dt, 0.001); // px per second closing
+      if(d < W*0.12 && speed > W*0.9 && t > state.clapCooldown){
+        state.clapCooldown = t + 900;
+        const mx = (hs[0].palm.x + hs[1].palm.x)/2;
+        const my = (hs[0].palm.y + hs[1].palm.y)/2;
+        rings.push({ x:mx, y:my, r:10, max:Math.max(W,H)*0.8, color:'#ffc933' });
+        rings.push({ x:mx, y:my, r:2,  max:Math.max(W,H)*0.5, color:'#ff3d8b' });
+        for(let i=0;i<50;i++) spawnParticle(mx, my, ['#ffc933','#ff3d8b','#ffffff'][i%3], 12);
+        state.shakes = 14;
+        addPower(18);
+        bigText('BOOM!!', '#ffc933');
+        setTag('CLAP SHOCKWAVE!');
+        beep(90,.25,'sawtooth',.3); beep(60,.4,'square',.25);
+        state.lastPairDist = d; state.lastPairTime = t;
+        return;
+      }
+    }
+    state.lastPairDist = d;
+    state.lastPairTime = t;
+  } else {
+    state.lastPairDist = null;
+  }
+
+  /* ---- two open palms -> mega beam ---- */
+  if(hs.length === 2 && hs.every(h => h.gesture === 'open')){
+    const mx = (hs[0].palm.x + hs[1].palm.x)/2;
+    const my = (hs[0].palm.y + hs[1].palm.y)/2;
+    beams.push({ x:mx, y:my, life:1 });
+    if(state.power >= 100) bigText('MEGA BEAM!!', '#7c5cff');
+    addPower(1.2);
+    setTag('MEGA BEAM!!!');
+    if(Math.random()<.2) beep(rand(500,900), .08, 'sawtooth', .06);
+    return;
+  }
+
+  /* ---- single-hand gestures ---- */
+  let tag = null;
+  for(const h of hs){
+    if(h.gesture === 'open'){
+      spawnParticle(h.palm.x, h.palm.y, '#22d3ee', 5);
+      spawnParticle(h.palm.x, h.palm.y, '#7c5cff', 5);
+      h.energy = true;
+      addPower(0.35);
+      tag = 'ENERGY BALL!';
+    } else if(h.gesture === 'fist'){
+      addPower(0.8);
+      h.charge = true;
+      tag = 'CHARGING POWER... ' + Math.round(state.power) + '%';
+      if(Math.random()<.15) beep(120 + state.power*3, .06, 'triangle', .05);
+    } else if(h.gesture === 'peace'){
+      stars.push({ x:h.tips[1].x, y:h.tips[1].y, vx:rand(-2,2), vy:rand(-5,-2), r:rand(6,14), life:1, spin:rand(0,6) });
+      stars.push({ x:h.tips[2].x, y:h.tips[2].y, vx:rand(-2,2), vy:rand(-5,-2), r:rand(6,14), life:1, spin:rand(0,6) });
+      addPower(0.3);
+      tag = 'STAR SPARKLES!';
+    }
+  }
+  if(robotOn) tag = 'ROBO MODE ACTIVE!';
+  setTag(tag || (hs.length ? 'Try a move!' : 'Show me your hands!'));
+}
+
+/* =====================  PARTICLES & EFFECTS  ===================== */
+function spawnParticle(x, y, color, speed){
+  const a = rand(0, Math.PI*2);
+  particles.push({
+    x, y,
+    vx: Math.cos(a)*rand(1,speed),
+    vy: Math.sin(a)*rand(1,speed),
+    r: rand(2,7), life: 1, color
+  });
+}
+
+function drawStarShape(x, y, r, rot){
+  ctx.beginPath();
+  for(let i=0;i<10;i++){
+    const rr = i%2===0 ? r : r*0.45;
+    const a = rot + i*Math.PI/5;
+    const px = x + Math.cos(a)*rr;
+    const py = y + Math.sin(a)*rr;
+    i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+}
+
+function drawEnergyBall(x, y, t){
+  const pulse = 1 + Math.sin(t/90)*0.12;
+  const R = 46 * pulse;
+  const g = ctx.createRadialGradient(x,y,4, x,y,R);
+  g.addColorStop(0,'rgba(255,255,255,.95)');
+  g.addColorStop(0.35,'rgba(34,211,238,.85)');
+  g.addColorStop(0.75,'rgba(124,92,255,.45)');
+  g.addColorStop(1,'rgba(124,92,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x,y,R,0,Math.PI*2); ctx.fill();
+  // spinning arcs
+  ctx.strokeStyle = 'rgba(255,255,255,.8)';
+  ctx.lineWidth = 3;
+  for(let i=0;i<3;i++){
+    ctx.beginPath();
+    ctx.arc(x, y, R*0.72, t/300 + i*2.1, t/300 + i*2.1 + 1.2);
+    ctx.stroke();
+  }
+}
+
+function drawChargeAura(x, y, t, power){
+  const R = 30 + power*0.6 + Math.sin(t/70)*6;
+  ctx.strokeStyle = `rgba(255,201,51,${0.4 + power/250})`;
+  ctx.lineWidth = 5;
+  for(let i=0;i<2;i++){
+    ctx.beginPath();
+    ctx.arc(x, y, R + i*14, 0, Math.PI*2);
+    ctx.stroke();
+  }
+  // rising sparks
+  if(Math.random()<0.6){
+    particles.push({ x:x+rand(-R,R), y:y+rand(-10,10), vx:0, vy:rand(-6,-3), r:rand(2,5), life:1, color:'#ffc933' });
+  }
+}
+
+function drawBeam(b, t){
+  const topY = 0;
+  const width = (60 + Math.sin(t/60)*14) * b.life * (0.6 + state.power/160);
+  const g = ctx.createLinearGradient(b.x - width, 0, b.x + width, 0);
+  g.addColorStop(0,'rgba(124,92,255,0)');
+  g.addColorStop(0.25,'rgba(124,92,255,.55)');
+  g.addColorStop(0.5,'rgba(255,255,255,.95)');
+  g.addColorStop(0.75,'rgba(34,211,238,.55)');
+  g.addColorStop(1,'rgba(34,211,238,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(b.x - width, topY, width*2, b.y);
+  // core
+  ctx.fillStyle = 'rgba(255,255,255,.9)';
+  ctx.fillRect(b.x - width*0.18, topY, width*0.36, b.y);
+  // muzzle glow
+  const mg = ctx.createRadialGradient(b.x,b.y,5, b.x,b.y,width*1.4);
+  mg.addColorStop(0,'rgba(255,255,255,.95)');
+  mg.addColorStop(1,'rgba(34,211,238,0)');
+  ctx.fillStyle = mg;
+  ctx.beginPath(); ctx.arc(b.x,b.y,width*1.4,0,Math.PI*2); ctx.fill();
+}
+
+/* Robot face overlay */
+function drawRobot(t){
+  const f = state.face;
+  if(!f) return;
+  const { x, y } = f;
+  const w = f.w * 1.35, h = f.h * 1.5;
+
+  ctx.save();
+  // metal head plate
+  const grad = ctx.createLinearGradient(x, y-h/2, x, y+h/2);
+  grad.addColorStop(0,'#9aa7c7');
+  grad.addColorStop(0.5,'#5b6a94');
+  grad.addColorStop(1,'#39406b');
+  ctx.fillStyle = grad;
+  roundRect(x-w/2, y-h/2, w, h, w*0.28);
+  ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = '#12102a';
+  roundRect(x-w/2, y-h/2, w, h, w*0.28);
+  ctx.stroke();
+
+  // panel lines
+  ctx.strokeStyle = 'rgba(18,16,42,.5)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x-w/2+10, y+h*0.18); ctx.lineTo(x+w/2-10, y+h*0.18);
+  ctx.moveTo(x, y+h*0.18); ctx.lineTo(x, y+h/2-8);
+  ctx.stroke();
+
+  // glowing visor
+  const blink = 0.75 + Math.sin(t/120)*0.25;
+  ctx.fillStyle = `rgba(34,211,238,${blink})`;
+  roundRect(x-w*0.38, y-h*0.18, w*0.76, h*0.2, 12);
+  ctx.fill();
+  ctx.shadowColor = '#22d3ee'; ctx.shadowBlur = 25;
+  ctx.fillStyle = 'rgba(255,255,255,.9)';
+  const eyeW = w*0.1;
+  ctx.fillRect(x-w*0.22-eyeW/2, y-h*0.13, eyeW, h*0.1);
+  ctx.fillRect(x+w*0.22-eyeW/2, y-h*0.13, eyeW, h*0.1);
+  ctx.shadowBlur = 0;
+
+  // mouth grill
+  ctx.fillStyle = '#12102a';
+  for(let i=0;i<4;i++){
+    ctx.fillRect(x-w*0.18 + i*w*0.1, y+h*0.26, w*0.05, h*0.12);
+  }
+
+  // antenna
+  ctx.strokeStyle = '#12102a'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(x, y-h/2); ctx.lineTo(x, y-h/2-28); ctx.stroke();
+  ctx.fillStyle = '#ff3d8b';
+  ctx.shadowColor = '#ff3d8b'; ctx.shadowBlur = 18;
+  ctx.beginPath(); ctx.arc(x, y-h/2-34, 9 + Math.sin(t/100)*2, 0, Math.PI*2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // ear bolts
+  ctx.fillStyle = '#ffc933';
+  ctx.beginPath(); ctx.arc(x-w/2, y, 14, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x+w/2, y, 14, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  // little lightning around head
+  if(Math.random()<0.3){
+    bolts.push({ x:x+rand(-w,w), y:y+rand(-h,h), life:1 });
+  }
+}
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+/* Anime speed lines during big moments */
+function drawSpeedLines(t, alpha){
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = '#ffffff';
+  const cx = W/2, cy = H/2;
+  for(let i=0;i<26;i++){
+    const a = (i/26)*Math.PI*2 + (t/900);
+    const inner = Math.min(W,H)*0.34;
+    const outer = Math.max(W,H);
+    ctx.lineWidth = rand(1,4);
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a)*inner, cy + Math.sin(a)*inner);
+    ctx.lineTo(cx + Math.cos(a)*outer, cy + Math.sin(a)*outer);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* Big comic text like "BOOM!!" */
+function drawBigText(t){
+  const bt = state.bigText;
+  if(!bt) return;
+  const age = (t - bt.t0)/1000;
+  if(age > 1.2){ state.bigText = null; return; }
+  const scale = age < 0.15 ? age/0.15 : 1;
+  const alpha = age > 0.8 ? 1-(age-0.8)/0.4 : 1;
+  ctx.save();
+  ctx.translate(W/2, H*0.35);
+  ctx.rotate(-0.06);
+  ctx.scale(scale, scale);
+  ctx.globalAlpha = alpha;
+  ctx.font = `${Math.min(W,H)*0.16}px Bangers, cursive`;
+  ctx.textAlign = 'center';
+  ctx.lineWidth = 12;
+  ctx.strokeStyle = '#12102a';
+  ctx.strokeText(bt.text, 0, 0);
+  ctx.fillStyle = bt.color;
+  ctx.fillText(bt.text, 0, 0);
+  ctx.restore();
+}
+
+/* =====================  MAIN LOOP  ===================== */
+function loop(){
+  const t = now();
+  ctx.clearRect(0,0,W,H);
+
+  // screen shake
+  ctx.save();
+  if(state.shakes > 0){
+    ctx.translate(rand(-6,6), rand(-6,6));
+    state.shakes--;
+  }
+
+  const robotOn = t < state.robotUntil;
+
+  // speed lines for beam and robot
+  if(beams.length || robotOn) drawSpeedLines(t, robotOn ? 0.25 : 0.18);
+
+  // beams
+  for(let i=beams.length-1;i>=0;i--){
+    const b = beams[i];
+    drawBeam(b, t);
+    b.life -= 0.06;
+    if(b.life <= 0) beams.splice(i,1);
+  }
+
+  // hand effects
+  for(const h of state.hands){
+    if(h.energy) drawEnergyBall(h.palm.x, h.palm.y, t);
+    if(h.charge) drawChargeAura(h.palm.x, h.palm.y, t, state.power);
+  }
+
+  // particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.06;
+    p.life -= 0.03;
+    if(p.life<=0){ particles.splice(i,1); continue; }
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r*p.life, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // shockwave rings
+  for(let i=rings.length-1;i>=0;i--){
+    const r = rings[i];
+    r.r += 26;
+    const a = 1 - r.r/r.max;
+    if(a<=0){ rings.splice(i,1); continue; }
+    ctx.globalAlpha = a;
+    ctx.lineWidth = 14*a + 3;
+    ctx.strokeStyle = r.color;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI*2); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // stars
+  for(let i=stars.length-1;i>=0;i--){
+    const s = stars[i];
+    s.x += s.vx; s.y += s.vy; s.vy += 0.08; s.spin += 0.1;
+    s.life -= 0.015;
+    if(s.life<=0){ stars.splice(i,1); continue; }
+    ctx.globalAlpha = s.life;
+    ctx.fillStyle = i%2 ? '#ffc933' : '#ff3d8b';
+    ctx.strokeStyle = '#12102a'; ctx.lineWidth = 2;
+    drawStarShape(s.x, s.y, s.r, s.spin);
+    ctx.fill(); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // robot mode
+  if(robotOn){
+    drawRobot(t);
+    // border glow
+    ctx.strokeStyle = `rgba(34,211,238,${0.5 + Math.sin(t/150)*0.3})`;
+    ctx.lineWidth = 14;
+    ctx.strokeRect(7,7,W-14,H-14);
+  }
+
+  // bolts
+  for(let i=bolts.length-1;i>=0;i--){
+    const b = bolts[i];
+    b.life -= 0.1;
+    if(b.life<=0){ bolts.splice(i,1); continue; }
+    ctx.globalAlpha = b.life;
+    ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 3;
+    ctx.beginPath();
+    let bx=b.x, by=b.y;
+    ctx.moveTo(bx,by);
+    for(let k=0;k<4;k++){ bx+=rand(-14,14); by+=rand(6,16); ctx.lineTo(bx,by); }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  drawBigText(t);
+  ctx.restore();
+
+  // power slowly drains, HUD update
+  state.power = Math.max(0, state.power - 0.07);
+  meterFill.style.width = state.power + '%';
+  meterPct.textContent = Math.round(state.power);
+
+  requestAnimationFrame(loop);
+}
+
+/* =====================  START  ===================== */
+let frameFlip = false;
+startBtn.addEventListener('click', async () => {
+  startBtn.disabled = true;
+  loadMsg.textContent = 'Loading powers...';
+  try{
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const camera = new Camera(video, {
+      onFrame: async () => {
+        // alternate models each frame to keep it fast
+        frameFlip = !frameFlip;
+        if(frameFlip) await hands.send({ image: video });
+        else await faceDet.send({ image: video });
+      },
+      width: 960,
+      height: 540
+    });
+    await camera.start();
+    startScreen.style.display = 'none';
+    stage.style.display = 'block';
+    resize();
+    loop();
+  }catch(err){
+    loadMsg.textContent = 'Camera could not start. Please allow camera access and try again.';
+    startBtn.disabled = false;
+    console.error(err);
+  }
+});
+</script>
+</body>
+</html>
