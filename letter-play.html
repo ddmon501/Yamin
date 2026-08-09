@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LETTER PLAY! Alif Ba Ta and ABC</title>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1d2440;
+    --teal:#2ec4b6;
+    --coral:#ff6f61;
+    --lemon:#ffd166;
+    --lilac:#9b8cff;
+    --cream:#fff8ef;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:var(--ink);font-family:'Nunito',sans-serif}
+  button{font-family:'Nunito',sans-serif}
+
+  /* ---------- Start screen ---------- */
+  #startScreen{
+    position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:18px;text-align:center;
+    background:
+      radial-gradient(circle at 20% 25%, rgba(46,196,182,.28), transparent 45%),
+      radial-gradient(circle at 80% 75%, rgba(255,111,97,.25), transparent 45%),
+      var(--ink);
+  }
+  #startScreen h1{
+    font-family:'Bangers',cursive;
+    font-size:clamp(46px,10vw,104px);
+    letter-spacing:4px;line-height:.95;
+    color:var(--lemon);
+    -webkit-text-stroke:3px var(--ink);
+    text-shadow:0 6px 0 var(--ink),0 0 30px rgba(255,209,102,.5);
+    transform:rotate(-2deg);
+  }
+  #startScreen h1 span{color:var(--teal);text-shadow:0 6px 0 var(--ink),0 0 30px rgba(46,196,182,.55)}
+  #startScreen p{color:var(--cream);font-weight:700;font-size:clamp(14px,2.3vw,18px);max-width:620px;padding:0 18px}
+  .howCard{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:10px;max-width:700px;width:92%;
+  }
+  .howCard div{
+    background:rgba(255,248,239,.08);border:2px solid rgba(255,248,239,.25);
+    border-radius:14px;padding:10px 8px;color:var(--cream);font-size:13px;font-weight:700;
+  }
+  .howCard b{display:block;font-family:'Bangers',cursive;font-size:19px;letter-spacing:1px;color:var(--lemon);font-weight:400}
+  .howCard .emo{font-size:26px;display:block;margin-bottom:2px}
+
+  .modeRow,.startRow{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  .modeBtn{
+    font-family:'Bangers',cursive;font-size:clamp(20px,3.2vw,28px);letter-spacing:2px;
+    color:var(--cream);background:rgba(255,248,239,.08);
+    border:3px solid var(--cream);border-radius:16px;padding:12px 26px;cursor:pointer;
+    transition:transform .12s, background .12s;
+  }
+  .modeBtn:hover{transform:scale(1.05)}
+  .modeBtn.sel{background:var(--teal);color:var(--ink);border-color:var(--ink);box-shadow:0 5px 0 var(--ink)}
+  .modeBtn:focus-visible{outline:4px solid var(--lemon);outline-offset:3px}
+  .goBtn{
+    font-family:'Bangers',cursive;font-size:clamp(20px,3.4vw,30px);letter-spacing:2px;
+    color:var(--ink);border:4px solid var(--ink);border-radius:999px;
+    padding:12px 34px;cursor:pointer;box-shadow:0 6px 0 var(--ink);
+    transition:transform .12s;
+  }
+  .goBtn:hover{transform:scale(1.05)}
+  .goBtn:active{transform:translateY(4px);box-shadow:0 2px 0 var(--ink)}
+  .goBtn:focus-visible{outline:4px solid var(--lemon);outline-offset:4px}
+  #camBtn{background:linear-gradient(180deg,var(--lemon),#f0a824)}
+  #touchBtn{background:linear-gradient(180deg,#c9c2ff,var(--lilac))}
+  #loadMsg{color:var(--lemon);font-weight:900;min-height:22px}
+
+  /* ---------- Game stage ---------- */
+  #stage{position:fixed;inset:0;display:none;background:#232c52}
+  video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  #fx{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+
+  #hud{
+    position:absolute;top:0;left:0;right:0;padding:10px 14px;
+    display:flex;align-items:center;justify-content:space-between;gap:8px;pointer-events:none;
+  }
+  .badge{
+    font-family:'Bangers',cursive;letter-spacing:2px;
+    background:rgba(29,36,64,.8);border:3px solid var(--cream);border-radius:14px;
+    padding:5px 14px;color:var(--cream);font-size:clamp(15px,2.6vw,22px);
+    text-shadow:0 2px 0 var(--ink);
+  }
+  #controls{display:flex;gap:8px;pointer-events:auto;flex-wrap:wrap;justify-content:center}
+  .miniBtn{
+    font-family:'Bangers',cursive;letter-spacing:1px;font-size:clamp(15px,2.6vw,22px);
+    background:rgba(29,36,64,.8);color:var(--cream);
+    border:3px solid var(--cream);border-radius:12px;padding:5px 14px;cursor:pointer;
+  }
+  .miniBtn.sel{background:var(--teal);color:var(--ink)}
+  .miniBtn:active{transform:scale(.94)}
+  #bottomBar{
+    position:absolute;bottom:12px;left:0;right:0;
+    display:flex;align-items:center;justify-content:center;gap:12px;pointer-events:none;
+  }
+  #bottomBar .miniBtn{pointer-events:auto;font-size:clamp(20px,3.6vw,30px);padding:8px 20px}
+  #tip{
+    position:absolute;bottom:76px;left:50%;transform:translateX(-50%) rotate(-1deg);
+    font-family:'Bangers',cursive;font-size:clamp(15px,2.6vw,22px);letter-spacing:2px;
+    color:var(--cream);background:rgba(29,36,64,.8);border:3px solid var(--cream);
+    border-radius:14px;padding:6px 18px;pointer-events:none;
+    text-shadow:0 2px 0 var(--ink);text-align:center;max-width:94%;
+  }
+</style>
+</head>
+<body>
+
+<div id="startScreen">
+  <h1>LETTER<br><span>PLAY!</span></h1>
+  <p>Grab giant letters with your fingers! Hear their names, spin them around, and make them HUGE!</p>
+  <div class="howCard">
+    <div><span class="emo">🤏</span><b>PINCH</b>Grab the letter and hear its name</div>
+    <div><span class="emo">✋✋</span><b>TWO PINCHES</b>Use both hands (or two fingers)</div>
+    <div><span class="emo">🔄</span><b>TWIST</b>Turn your two pinches to spin it</div>
+    <div><span class="emo">🔍</span><b>ZOOM</b>Pull pinches apart to make it big!</div>
+  </div>
+  <div class="modeRow">
+    <button class="modeBtn sel" data-alpha="ar">ا ب ت &nbsp;ALIF BA TA</button>
+    <button class="modeBtn" data-alpha="en">ABC</button>
+  </div>
+  <div class="startRow">
+    <button class="goBtn" id="camBtn">PLAY WITH CAMERA</button>
+    <button class="goBtn" id="touchBtn">PLAY WITH TOUCH</button>
+  </div>
+  <div id="loadMsg"></div>
+</div>
+
+<div id="stage">
+  <video id="cam" playsinline muted></video>
+  <canvas id="fx"></canvas>
+  <div id="hud">
+    <div class="badge" id="counter">1 / 28</div>
+    <div id="controls">
+      <button class="miniBtn sel" id="arBtn">ا ب ت</button>
+      <button class="miniBtn" id="enBtn">ABC</button>
+      <button class="miniBtn" id="sayBtn">🔊 SAY IT</button>
+      <button class="miniBtn" id="resetBtn">🎯 RESET</button>
+    </div>
+  </div>
+  <div id="tip">Pinch the letter! 🤏</div>
+  <div id="bottomBar">
+    <button class="miniBtn" id="prevBtn">◀ BACK</button>
+    <button class="miniBtn" id="nextBtn">NEXT ▶</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script>
+"use strict";
+
+/* =====================  SETUP  ===================== */
+const video = document.getElementById('cam');
+const canvas = document.getElementById('fx');
+const ctx = canvas.getContext('2d');
+const stage = document.getElementById('stage');
+const startScreen = document.getElementById('startScreen');
+const loadMsg = document.getElementById('loadMsg');
+const tipEl = document.getElementById('tip');
+const counterEl = document.getElementById('counter');
+
+let W=0,H=0;
+function resize(){ W=canvas.width=window.innerWidth; H=canvas.height=window.innerHeight; }
+window.addEventListener('resize',resize); resize();
+
+let audioCtx=null;
+function beep(freq,dur,type='sine',vol=0.15){
+  if(!audioCtx) return;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=type; o.frequency.value=freq;
+  g.gain.setValueAtTime(vol,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+dur);
+}
+function rand(a,b){ return a+Math.random()*(b-a); }
+function now(){ return performance.now(); }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+
+/* Voices: use an Arabic voice if the device has one */
+let arVoice=null;
+function findVoices(){
+  const vs = speechSynthesis.getVoices();
+  arVoice = vs.find(v=>v.lang && v.lang.toLowerCase().startsWith('ar')) || null;
+}
+speechSynthesis.onvoiceschanged = findVoices;
+findVoices();
+
+function speak(text, arabic){
+  try{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.85; u.pitch = 1.1;
+    if(arabic && arVoice){ u.voice = arVoice; u.lang = arVoice.lang; }
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+/* =====================  LETTERS DATA  ===================== */
+const AR = [
+  ['ا','Alif','ألف'],['ب','Ba','باء'],['ت','Ta','تاء'],['ث','Tha','ثاء'],
+  ['ج','Jeem','جيم'],['ح','Haa','حاء'],['خ','Khaa','خاء'],['د','Dal','دال'],
+  ['ذ','Dhal','ذال'],['ر','Ra','راء'],['ز','Zay','زاي'],['س','Seen','سين'],
+  ['ش','Sheen','شين'],['ص','Saad','صاد'],['ض','Daad','ضاد'],['ط','Taa','طاء'],
+  ['ظ','Zaa','ظاء'],['ع','Ayn','عين'],['غ','Ghayn','غين'],['ف','Fa','فاء'],
+  ['ق','Qaf','قاف'],['ك','Kaf','كاف'],['ل','Lam','لام'],['م','Meem','ميم'],
+  ['ن','Noon','نون'],['ه','Ha','هاء'],['و','Waw','واو'],['ي','Ya','ياء'],
+];
+const EN = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(c=>[c, c, null]);
+
+const CARD_COLORS = [
+  ['#2ec4b6','#177e74'], ['#ff6f61','#c23f33'], ['#ffd166','#d99a1b'],
+  ['#9b8cff','#6a58d6'], ['#6cc551','#3f8f2b'], ['#ff8fb1','#d65a86'],
+];
+
+const game = {
+  usingCamera:false,
+  alpha:'ar',       // 'ar' | 'en'
+  idx:0,
+  letter:{ x:0, y:0, scale:1, rot:0, popT:0 },
+  spokenOnGrab:false,
+  lastAction:'',    // 'move' | 'twist' | 'zoom'
+};
+function letters(){ return game.alpha==='ar' ? AR : EN; }
+function cur(){ return letters()[game.idx]; }
+function baseSize(){ return Math.min(W,H)*0.42; }
+
+const particles = [];
+function sparkle(x,y,n=10){
+  const colors=['#ffd166','#fff8ef','#2ec4b6','#ff6f61'];
+  for(let i=0;i<n;i++){
+    const a=rand(0,Math.PI*2);
+    particles.push({x,y,vx:Math.cos(a)*rand(1,6),vy:Math.sin(a)*rand(1,6),r:rand(2,5),life:1,color:colors[i%colors.length],star:Math.random()<0.5});
+  }
+}
+
+function setTip(t){ tipEl.textContent = t; }
+
+function setLetter(i){
+  const L = letters();
+  game.idx = ((i % L.length) + L.length) % L.length;
+  game.letter = { x:W/2, y:H*0.48, scale:1, rot:0, popT:now() };
+  counterEl.textContent = (game.idx+1) + ' / ' + L.length;
+  game.spokenOnGrab=false;
+  sayCurrent();
+  sparkle(W/2, H*0.48, 16);
+  beep(500,.08,'triangle',.12); beep(750,.1,'triangle',.1);
+  setTip(labelText() + '  🤏 Pinch me!');
+}
+function labelText(){
+  const [ch,name] = cur();
+  return game.alpha==='ar' ? (name + '  ' + ch) : (ch + '  ' + ch.toLowerCase());
+}
+function sayCurrent(){
+  const [ch,name,arName] = cur();
+  if(game.alpha==='ar'){
+    if(arVoice) speak(arName, true);
+    else speak(name, false);
+  } else {
+    speak(name, false);
+  }
+}
+
+/* =====================  HANDS + TOUCH PINCH POINTS  ===================== */
+const handsState = [];
+const pointers = new Map();
+
+function toScreen(pt){ return { x:(1-pt.x)*W, y:pt.y*H }; }
+
+let mpHands=null;
+function setupHands(){
+  mpHands = new Hands({ locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+  mpHands.setOptions({ maxNumHands:2, modelComplexity:0, minDetectionConfidence:0.6, minTrackingConfidence:0.5 });
+  mpHands.onResults(res=>{
+    handsState.length=0;
+    if(res.multiHandLandmarks){
+      res.multiHandLandmarks.forEach((lm,i)=>{
+        const thumb=toScreen(lm[4]), index=toScreen(lm[8]);
+        const gx=(thumb.x+index.x)/2, gy=(thumb.y+index.y)/2;
+        const handSize=Math.hypot(toScreen(lm[0]).x-toScreen(lm[9]).x, toScreen(lm[0]).y-toScreen(lm[9]).y);
+        const pinch = Math.hypot(thumb.x-index.x,thumb.y-index.y) < Math.max(34, handSize*0.45);
+        handsState.push({ id:'h'+i, x:gx, y:gy, pinch });
+      });
+    }
+  });
+}
+
+canvas.addEventListener('pointerdown', e=>{
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e=>{
+  if(pointers.has(e.pointerId)) pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+});
+function dropPointer(e){ pointers.delete(e.pointerId); }
+canvas.addEventListener('pointerup', dropPointer);
+canvas.addEventListener('pointercancel', dropPointer);
+
+function pinchPoints(){
+  const pts=[];
+  for(const h of handsState) if(h.pinch) pts.push({id:h.id,x:h.x,y:h.y});
+  pointers.forEach((p,id)=>pts.push({id:'p'+id,x:p.x,y:p.y}));
+  return pts;
+}
+function pointOnLetter(p){
+  const L=game.letter;
+  return Math.hypot(p.x-L.x, p.y-L.y) < baseSize()*L.scale*0.62;
+}
+
+/* =====================  TRANSFORM GESTURE ENGINE  ===================== */
+let gest = null; // {ids:[], mode:'one'|'two', refs...}
+
+function captureOne(p){
+  const L=game.letter;
+  gest = { ids:[p.id], mode:'one', offX:p.x-L.x, offY:p.y-L.y };
+}
+function captureTwo(p1,p2){
+  const L=game.letter;
+  const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2;
+  gest = {
+    ids:[p1.id,p2.id], mode:'two',
+    d0: Math.max(20, Math.hypot(p1.x-p2.x,p1.y-p2.y)),
+    a0: Math.atan2(p2.y-p1.y, p2.x-p1.x),
+    s0: L.scale, r0: L.rot,
+    offX: mx-L.x, offY: my-L.y,
+  };
+}
+
+function updateGesture(t){
+  const pts = pinchPoints();
+  const L = game.letter;
+
+  if(!gest){
+    const near = pts.find(pointOnLetter);
+    if(near){
+      captureOne(near);
+      if(!game.spokenOnGrab){ sayCurrent(); game.spokenOnGrab=true; }
+      beep(700,.05,'square',.08);
+      sparkle(near.x, near.y, 6);
+      game.lastAction='move';
+      setTip('Got it! Add another pinch to TWIST and ZOOM! ✋✋');
+    }
+    return;
+  }
+
+  // resolve current points of the gesture
+  const curPts = gest.ids.map(id=>pts.find(p=>p.id===id));
+
+  // a point was lifted
+  if(curPts.some(p=>!p)){
+    const alive = curPts.filter(Boolean);
+    if(alive.length===1) captureOne(alive[0]);
+    else {
+      gest=null;
+      game.spokenOnGrab=false;
+      setTip(labelText() + '  🤏 Pinch me!');
+    }
+    return;
+  }
+
+  // upgrade to two-point transform when a second pinch appears
+  if(gest.mode==='one'){
+    const extra = pts.find(p=>p.id!==gest.ids[0]);
+    if(extra){ captureTwo(curPts[0], extra); return; }
+    const p = curPts[0];
+    L.x = p.x - gest.offX;
+    L.y = p.y - gest.offY;
+    game.lastAction='move';
+  } else {
+    const [p1,p2] = curPts;
+    const d = Math.max(20, Math.hypot(p1.x-p2.x,p1.y-p2.y));
+    const a = Math.atan2(p2.y-p1.y, p2.x-p1.x);
+    const newScale = clamp(gest.s0 * d/gest.d0, 0.35, 3.4);
+    const newRot = gest.r0 + (a - gest.a0);
+
+    if(Math.abs(newScale-L.scale) > 0.01 && Math.abs(newScale-L.scale) > Math.abs(newRot-L.rot)*0.3){
+      game.lastAction='zoom';
+      setTip(newScale>1.6 ? 'SOOO BIG! 🔍' : (newScale<0.7 ? 'Tiny letter! 🐜' : 'ZOOM! 🔍'));
+    } else if(Math.abs(newRot-L.rot) > 0.02){
+      game.lastAction='twist';
+      setTip('TWIST! 🔄 Wheee!');
+    }
+    if(Math.random()<0.25) sparkle(L.x + rand(-40,40)*L.scale, L.y + rand(-40,40)*L.scale, 2);
+
+    L.scale = newScale;
+    L.rot = newRot;
+    const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2;
+    L.x = mx - gest.offX;
+    L.y = my - gest.offY;
+  }
+}
+
+/* =====================  DRAWING  ===================== */
+function drawBackground(){
+  if(game.usingCamera) return;
+  const g=ctx.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,'#2b3567');
+  g.addColorStop(1,'#1d2440');
+  ctx.fillStyle=g;
+  ctx.fillRect(0,0,W,H);
+  // floating dots
+  const t=now();
+  ctx.fillStyle='rgba(255,248,239,.08)';
+  for(let i=0;i<20;i++){
+    const x=(i*97)%W, y=(i*131 + t*0.02*(1+(i%3)))%H;
+    ctx.beginPath(); ctx.arc(x,y, 4+(i%4)*2, 0, Math.PI*2); ctx.fill();
+  }
+}
+
+function drawLetter(t){
+  const L=game.letter;
+  const [ch,name] = cur();
+  const col = CARD_COLORS[game.idx % CARD_COLORS.length];
+  const pop = Math.min(1,(t-L.popT)/300);
+  const popScale = 0.3 + 0.7*(1-Math.pow(1-pop,3));
+  const S = baseSize()*L.scale*popScale;
+
+  ctx.save();
+  ctx.translate(L.x,L.y);
+  ctx.rotate(L.rot);
+
+  // card
+  const r=S*0.5, cr=S*0.16;
+  ctx.shadowColor='rgba(0,0,0,.4)'; ctx.shadowBlur=24; ctx.shadowOffsetY=8;
+  const g=ctx.createLinearGradient(0,-r,0,r);
+  g.addColorStop(0,col[0]);
+  g.addColorStop(1,col[1]);
+  ctx.fillStyle=g;
+  roundRect(-r,-r,S,S,cr);
+  ctx.fill();
+  ctx.shadowColor='transparent';
+  ctx.lineWidth=Math.max(4,S*0.02);
+  ctx.strokeStyle='#1d2440';
+  roundRect(-r,-r,S,S,cr);
+  ctx.stroke();
+  // shine
+  ctx.fillStyle='rgba(255,255,255,.18)';
+  roundRect(-r*0.85,-r*0.85,S*0.85,S*0.32,cr*0.6);
+  ctx.fill();
+
+  // main letter
+  ctx.fillStyle='#fff8ef';
+  ctx.strokeStyle='#1d2440';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.font=`900 ${S*0.58}px Nunito, 'Segoe UI', sans-serif`;
+  ctx.lineWidth=Math.max(4,S*0.025);
+  ctx.strokeText(ch,0,S*0.02);
+  ctx.fillText(ch,0,S*0.02);
+
+  // lowercase badge for ABC
+  if(game.alpha==='en'){
+    ctx.font=`900 ${S*0.2}px Nunito`;
+    ctx.fillStyle='rgba(29,36,64,.85)';
+    ctx.beginPath(); ctx.arc(r*0.62, r*0.62, S*0.14, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff8ef';
+    ctx.fillText(ch.toLowerCase(), r*0.62, r*0.64);
+  }
+  ctx.restore();
+
+  // name under the card (not rotated, easy to read)
+  ctx.font=`${Math.min(W,H)*0.055}px Bangers, cursive`;
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.lineWidth=8; ctx.strokeStyle='#1d2440';
+  const ny = Math.min(H-60, L.y + S*0.62);
+  ctx.strokeText(name, L.x, ny);
+  ctx.fillStyle='#ffd166';
+  ctx.fillText(name, L.x, ny);
+}
+
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+function drawHandsCursor(t){
+  const pts=[];
+  for(const h of handsState) pts.push(h);
+  for(const h of pts){
+    ctx.save();
+    ctx.translate(h.x,h.y);
+    if(h.pinch){
+      ctx.strokeStyle='#2ec4b6'; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(0,0,24,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle='rgba(46,196,182,.25)';
+      ctx.beginPath(); ctx.arc(0,0,24,0,Math.PI*2); ctx.fill();
+    } else {
+      ctx.strokeStyle='rgba(255,248,239,.85)'; ctx.lineWidth=3;
+      ctx.setLineDash([8,8]);
+      ctx.beginPath(); ctx.arc(0,0,28+Math.sin(t/200)*4,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+  // line between two active pinch points during twist/zoom
+  if(gest && gest.mode==='two'){
+    const pts2 = pinchPoints();
+    const p1=pts2.find(p=>p.id===gest.ids[0]);
+    const p2=pts2.find(p=>p.id===gest.ids[1]);
+    if(p1&&p2){
+      ctx.strokeStyle='rgba(255,209,102,.7)';
+      ctx.lineWidth=3;
+      ctx.setLineDash([6,8]);
+      ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+}
+
+function drawStar(x,y,r,rot){
+  ctx.beginPath();
+  for(let i=0;i<10;i++){
+    const rr=i%2===0?r:r*0.45;
+    const a=rot+i*Math.PI/5;
+    const px=x+Math.cos(a)*rr, py=y+Math.sin(a)*rr;
+    i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+}
+
+/* =====================  MAIN LOOP  ===================== */
+function loop(t){
+  ctx.clearRect(0,0,W,H);
+  drawBackground();
+  updateGesture(t);
+  drawLetter(t);
+
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.05; p.life-=0.02;
+    if(p.life<=0){ particles.splice(i,1); continue; }
+    ctx.globalAlpha=p.life;
+    ctx.fillStyle=p.color;
+    if(p.star){ drawStar(p.x,p.y,p.r*2*p.life,p.life*4); ctx.fill(); }
+    else { ctx.beginPath(); ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2); ctx.fill(); }
+    ctx.globalAlpha=1;
+  }
+
+  drawHandsCursor(t);
+  requestAnimationFrame(loop);
+}
+
+/* =====================  BUTTONS & START  ===================== */
+let chosenAlpha='ar';
+document.querySelectorAll('.modeBtn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.modeBtn').forEach(x=>x.classList.remove('sel'));
+    b.classList.add('sel');
+    chosenAlpha=b.dataset.alpha;
+  });
+});
+function setAlpha(a){
+  game.alpha=a;
+  document.getElementById('arBtn').classList.toggle('sel',a==='ar');
+  document.getElementById('enBtn').classList.toggle('sel',a==='en');
+  setLetter(0);
+}
+document.getElementById('arBtn').addEventListener('click',()=>setAlpha('ar'));
+document.getElementById('enBtn').addEventListener('click',()=>setAlpha('en'));
+document.getElementById('nextBtn').addEventListener('click',()=>setLetter(game.idx+1));
+document.getElementById('prevBtn').addEventListener('click',()=>setLetter(game.idx-1));
+document.getElementById('sayBtn').addEventListener('click',sayCurrent);
+document.getElementById('resetBtn').addEventListener('click',()=>{
+  game.letter={ x:W/2, y:H*0.48, scale:1, rot:0, popT:now() };
+  beep(600,.08,'triangle',.1);
+});
+
+async function startGame(withCamera){
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  game.usingCamera = withCamera;
+  if(withCamera){
+    loadMsg.textContent='Loading letters...';
+    try{
+      setupHands();
+      const camera=new Camera(video,{
+        onFrame: async ()=>{ await mpHands.send({image:video}); },
+        width:960,height:540
+      });
+      await camera.start();
+    }catch(err){
+      loadMsg.textContent='Camera could not start. Try "Play with touch" instead.';
+      console.error(err);
+      return;
+    }
+  } else {
+    video.style.display='none';
+  }
+  startScreen.style.display='none';
+  stage.style.display='block';
+  resize();
+  setAlpha(chosenAlpha);
+  requestAnimationFrame(loop);
+}
+document.getElementById('camBtn').addEventListener('click',()=>startGame(true));
+document.getElementById('touchBtn').addEventListener('click',()=>startGame(false));
+</script>
+</body>
+</html>
