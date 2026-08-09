@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SNACK GRAB! Catch, Eat and Throw</title>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#241238;
+    --candy:#ff4fa3;
+    --mint:#3ee6b0;
+    --sun:#ffd23f;
+    --grape:#8a5cff;
+    --cream:#fff6e9;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:var(--ink);font-family:'Nunito',sans-serif}
+
+  /* ---------- Start screen ---------- */
+  #startScreen{
+    position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:20px;text-align:center;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(255,79,163,.25), transparent 40%),
+      radial-gradient(circle at 80% 30%, rgba(62,230,176,.2), transparent 45%),
+      radial-gradient(circle at 50% 90%, rgba(255,210,63,.18), transparent 50%),
+      var(--ink);
+  }
+  #startScreen h1{
+    font-family:'Bangers',cursive;
+    font-size:clamp(50px,11vw,116px);
+    letter-spacing:4px;line-height:.95;
+    color:var(--candy);
+    -webkit-text-stroke:3px var(--ink);
+    text-shadow:0 6px 0 var(--ink),0 0 34px rgba(255,79,163,.5);
+    transform:rotate(-2.5deg);
+  }
+  #startScreen h1 span{color:var(--mint);text-shadow:0 6px 0 var(--ink),0 0 34px rgba(62,230,176,.55)}
+  #startScreen p{color:var(--cream);font-weight:700;font-size:clamp(14px,2.4vw,19px);max-width:600px;padding:0 18px}
+  .howCard{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:10px;max-width:760px;width:92%;
+  }
+  .howCard div{
+    background:rgba(255,246,233,.08);border:2px solid rgba(255,246,233,.25);
+    border-radius:14px;padding:10px 8px;color:var(--cream);font-size:13px;font-weight:700;
+  }
+  .howCard b{display:block;font-family:'Bangers',cursive;font-size:19px;letter-spacing:1px;color:var(--sun);font-weight:400}
+  .howCard .emo{font-size:26px;display:block;margin-bottom:2px}
+  #startBtn{
+    font-family:'Bangers',cursive;font-size:clamp(24px,4vw,36px);letter-spacing:2px;
+    color:var(--ink);background:linear-gradient(180deg,var(--mint),#12c98e);
+    border:4px solid var(--ink);border-radius:999px;padding:14px 44px;cursor:pointer;
+    box-shadow:0 7px 0 var(--ink),0 0 30px rgba(62,230,176,.4);
+    transition:transform .12s;
+  }
+  #startBtn:hover{transform:scale(1.06) rotate(1deg)}
+  #startBtn:active{transform:translateY(5px);box-shadow:0 2px 0 var(--ink)}
+  #startBtn:focus-visible{outline:4px solid var(--sun);outline-offset:4px}
+  #loadMsg{color:var(--sun);font-weight:900;min-height:22px}
+
+  /* ---------- Game stage ---------- */
+  #stage{position:fixed;inset:0;display:none;background:#000}
+  video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  #fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+  #hud{
+    position:absolute;top:0;left:0;right:0;padding:12px 16px;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;pointer-events:none;
+  }
+  .badge{
+    font-family:'Bangers',cursive;letter-spacing:2px;
+    background:rgba(36,18,56,.72);border:3px solid var(--cream);border-radius:14px;
+    padding:6px 16px;color:var(--cream);font-size:clamp(16px,2.8vw,24px);
+    text-shadow:0 2px 0 var(--ink);
+  }
+  #score{color:var(--sun)}
+  #tip{
+    position:absolute;bottom:16px;left:50%;transform:translateX(-50%) rotate(-1.5deg);
+    font-family:'Bangers',cursive;font-size:clamp(16px,2.8vw,24px);letter-spacing:2px;
+    color:var(--cream);background:rgba(36,18,56,.72);border:3px solid var(--cream);
+    border-radius:14px;padding:6px 18px;pointer-events:none;
+    text-shadow:0 2px 0 var(--ink);text-align:center;max-width:92%;
+  }
+</style>
+</head>
+<body>
+
+<div id="startScreen">
+  <h1>SNACK<br><span>GRAB!</span></h1>
+  <p>Sweets and bugs float around you! Pinch your fingers to grab things. But watch out, do not eat the bugs!</p>
+  <div class="howCard">
+    <div><span class="emo">🤏</span><b>PINCH</b>Grab a snack or bug</div>
+    <div><span class="emo">✋</span><b>LET GO</b>Drop it down</div>
+    <div><span class="emo">💨</span><b>SWING + LET GO</b>Throw it far!</div>
+    <div><span class="emo">😋</span><b>BRING TO MOUTH</b>Eat it! Yum... or YUCK!</div>
+  </div>
+  <p>🍬 🍭 🍦 = +points &nbsp;&nbsp; 🐜 🕷️ = EWW! Throw them away instead!</p>
+  <button id="startBtn">START GAME</button>
+  <div id="loadMsg"></div>
+</div>
+
+<div id="stage">
+  <video id="cam" playsinline muted></video>
+  <canvas id="fx"></canvas>
+  <div id="hud">
+    <div class="badge">SNACK GRAB!</div>
+    <div class="badge" id="score">SCORE 0</div>
+  </div>
+  <div id="tip">Pinch to grab! 🤏</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script>
+"use strict";
+
+/* =====================  SETUP  ===================== */
+const video = document.getElementById('cam');
+const canvas = document.getElementById('fx');
+const ctx = canvas.getContext('2d');
+const stage = document.getElementById('stage');
+const startScreen = document.getElementById('startScreen');
+const startBtn = document.getElementById('startBtn');
+const loadMsg = document.getElementById('loadMsg');
+const tipEl = document.getElementById('tip');
+const scoreEl = document.getElementById('score');
+
+let W=0,H=0;
+function resize(){ W=canvas.width=window.innerWidth; H=canvas.height=window.innerHeight; }
+window.addEventListener('resize',resize); resize();
+
+let audioCtx=null;
+function beep(freq,dur,type='sine',vol=0.15){
+  if(!audioCtx) return;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=type; o.frequency.value=freq;
+  g.gain.setValueAtTime(vol,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+dur);
+}
+function yumSound(){ beep(500,.12,'sine',.2); setTimeout(()=>beep(700,.12,'sine',.2),90); setTimeout(()=>beep(950,.2,'sine',.2),180); }
+function yuckSound(){ beep(300,.15,'sawtooth',.2); setTimeout(()=>beep(180,.3,'sawtooth',.25),120); }
+function popSound(){ beep(800,.06,'square',.12); }
+function whooshSound(){ beep(220,.18,'triangle',.15); }
+
+function rand(a,b){ return a+Math.random()*(b-a); }
+function now(){ return performance.now(); }
+
+/* =====================  ITEM TYPES  ===================== */
+const TYPES = {
+  candy:    { emo:'🍬', good:true,  pts:10,  size:44, spawnW:3 },
+  lolly:    { emo:'🍭', good:true,  pts:15,  size:52, spawnW:2 },
+  icecream: { emo:'🍦', good:true,  pts:20,  size:54, spawnW:2 },
+  ant:      { emo:'🐜', good:false, pts:-15, size:38, spawnW:2 },
+  spider:   { emo:'🕷️', good:false, pts:-25, size:48, spawnW:1.5 },
+};
+
+const items = [];
+const particles = [];
+let score = 0;
+let bigMsg = null; // {text,color,t0}
+let munch = null;  // {x,y,t0}
+
+function addScore(n){
+  score = Math.max(0, score + n);
+  scoreEl.textContent = 'SCORE ' + score;
+}
+function showBig(text,color){ bigMsg = { text, color, t0: now() }; }
+function setTip(t){ tipEl.textContent = t; }
+
+function pickType(){
+  const entries = Object.entries(TYPES);
+  const total = entries.reduce((s,[,v])=>s+v.spawnW,0);
+  let r = Math.random()*total;
+  for(const [k,v] of entries){ r -= v.spawnW; if(r<=0) return k; }
+  return 'candy';
+}
+
+function spawnItem(){
+  const type = pickType();
+  const T = TYPES[type];
+  const it = {
+    type, ...T,
+    x: rand(W*0.1, W*0.9),
+    y: -60,
+    vx: rand(-1,1),
+    vy: rand(0.5,1.5),
+    rot: rand(0,Math.PI*2),
+    vrot: rand(-0.03,0.03),
+    held: null,      // hand index holding it
+    onFloor: false,
+    thread: type==='spider' && Math.random()<0.6, // spider hangs from web
+    threadY: rand(H*0.2, H*0.5),
+    wanderT: rand(0,1000),
+  };
+  if(type==='ant'){ // ants walk in from the sides on the floor
+    const fromLeft = Math.random()<0.5;
+    it.x = fromLeft ? -40 : W+40;
+    it.y = H - 30;
+    it.vx = fromLeft ? rand(1.5,2.5) : rand(-2.5,-1.5);
+    it.vy = 0;
+    it.onFloor = true;
+  }
+  items.push(it);
+}
+
+function burst(x,y,color,n=18,speed=8){
+  for(let i=0;i<n;i++){
+    const a = rand(0,Math.PI*2);
+    particles.push({ x,y, vx:Math.cos(a)*rand(1,speed), vy:Math.sin(a)*rand(1,speed), r:rand(2,6), life:1, color });
+  }
+}
+
+/* =====================  HAND TRACKING  ===================== */
+/* handsState: [{x,y, pinch, vx, vy, holding}] */
+const handsState = [];
+let face = null; // {x,y,w,h}
+let mouth = null; // {x,y}
+
+function toScreen(pt){ return { x:(1-pt.x)*W, y:pt.y*H }; }
+
+const mpHands = new Hands({ locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+mpHands.setOptions({ maxNumHands:2, modelComplexity:0, minDetectionConfidence:0.6, minTrackingConfidence:0.5 });
+
+const faceDet = new FaceDetection({ locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${f}` });
+faceDet.setOptions({ model:'short', minDetectionConfidence:0.6 });
+
+mpHands.onResults(res=>{
+  const t = now();
+  const newHands = [];
+  if(res.multiHandLandmarks){
+    res.multiHandLandmarks.forEach((lm,i)=>{
+      const thumb = toScreen(lm[4]);
+      const index = toScreen(lm[8]);
+      const gx = (thumb.x+index.x)/2;
+      const gy = (thumb.y+index.y)/2;
+      const pinchDist = Math.hypot(thumb.x-index.x, thumb.y-index.y);
+      const handSize = Math.hypot(toScreen(lm[0]).x - toScreen(lm[9]).x, toScreen(lm[0]).y - toScreen(lm[9]).y);
+      const pinch = pinchDist < Math.max(34, handSize*0.45);
+
+      const prev = handsState[i];
+      let vx=0, vy=0;
+      if(prev){
+        const dt = Math.max((t - prev.t)/1000, 0.001);
+        vx = (gx - prev.x)/dt;
+        vy = (gy - prev.y)/dt;
+        // smooth
+        vx = prev.vx*0.5 + vx*0.5;
+        vy = prev.vy*0.5 + vy*0.5;
+      }
+      newHands.push({ x:gx, y:gy, pinch, vx, vy, t, holding: prev ? prev.holding : null, wasPinch: prev ? prev.pinch : false });
+    });
+  }
+  handsState.length = 0;
+  newHands.forEach(h=>handsState.push(h));
+  handleGrabbing();
+});
+
+faceDet.onResults(res=>{
+  if(res.detections && res.detections.length){
+    const b = res.detections[0].boundingBox;
+    face = { x:(1-b.xCenter)*W, y:b.yCenter*H, w:b.width*W, h:b.height*H };
+    mouth = { x: face.x, y: face.y + face.h*0.32 };
+  } else { face=null; mouth=null; }
+});
+
+/* =====================  GRAB / DROP / THROW / EAT  ===================== */
+function handleGrabbing(){
+  handsState.forEach((h, hi)=>{
+    const heldItem = items.find(it=>it.held===hi);
+
+    if(h.pinch){
+      if(!heldItem && !h.wasPinch){
+        // try to grab nearest item
+        let best=null, bestD=1e9;
+        for(const it of items){
+          if(it.held!==null) continue;
+          const d = Math.hypot(it.x-h.x, it.y-h.y);
+          if(d < it.size*1.4 && d < bestD){ best=it; bestD=d; }
+        }
+        if(best){
+          best.held = hi;
+          best.thread = false;
+          best.onFloor = false;
+          h.holding = best.type;
+          popSound();
+          setTip(best.good ? 'Got a ' + best.emo + '! Eat it or throw it!' : best.emo + ' EWW a bug! Throw it away!');
+        }
+      }
+      if(heldItem){
+        heldItem.x = h.x;
+        heldItem.y = h.y;
+        heldItem.vx = 0; heldItem.vy = 0;
+
+        // eat check: item near mouth
+        if(mouth){
+          const dm = Math.hypot(heldItem.x-mouth.x, heldItem.y-mouth.y);
+          if(dm < Math.max(60, face.w*0.4)){
+            eatItem(heldItem);
+            h.holding = null;
+          }
+        }
+      }
+    } else {
+      if(heldItem){
+        // release: throw or drop based on hand speed
+        const speed = Math.hypot(h.vx, h.vy);
+        heldItem.held = null;
+        h.holding = null;
+        if(speed > 900){
+          heldItem.vx = h.vx/60;
+          heldItem.vy = h.vy/60;
+          whooshSound();
+          showBig('THROW!!','#3ee6b0');
+          burst(heldItem.x, heldItem.y, '#ffffff', 10, 5);
+        } else {
+          heldItem.vx = h.vx/200;
+          heldItem.vy = 1;
+        }
+      }
+    }
+  });
+  // clean lost hands: free their items
+  items.forEach(it=>{
+    if(it.held!==null && it.held >= handsState.length){ it.held=null; it.vy=1; }
+  });
+}
+
+function eatItem(it){
+  const idx = items.indexOf(it);
+  if(idx>=0) items.splice(idx,1);
+  munch = { x: it.x, y: it.y, t0: now() };
+  if(it.good){
+    addScore(it.pts);
+    showBig(['YUM!!','TASTY!!','SWEET!!'][Math.floor(Math.random()*3)], '#ffd23f');
+    burst(it.x, it.y, '#ff4fa3', 22, 8);
+    burst(it.x, it.y, '#ffd23f', 14, 6);
+    yumSound();
+    setTip('Yummy! +' + it.pts + ' points!');
+  } else {
+    addScore(it.pts);
+    showBig('YUCK!!!','#8a5cff');
+    burst(it.x, it.y, '#7fbf3f', 26, 9);
+    yuckSound();
+    setTip('EWWW you ate a bug! ' + it.pts + ' points!');
+  }
+}
+
+/* =====================  PHYSICS & DRAW  ===================== */
+function updateItems(dt){
+  const floor = H - 24;
+  for(let i=items.length-1;i>=0;i--){
+    const it = items[i];
+    if(it.held!==null) continue;
+
+    if(it.type==='spider' && it.thread){
+      // hang and bob on a web thread
+      it.wanderT += dt;
+      it.y += Math.sin(it.wanderT/400)*0.6;
+      it.x += Math.sin(it.wanderT/700)*0.4;
+      continue;
+    }
+    if(it.type==='ant' && it.onFloor){
+      it.wanderT += dt;
+      it.x += it.vx;
+      it.y = floor - 6 + Math.sin(it.wanderT/80)*2;
+      if(it.x<-60 || it.x>W+60) items.splice(i,1);
+      continue;
+    }
+
+    // normal physics
+    it.vy += 0.35;
+    it.x += it.vx;
+    it.y += it.vy;
+    it.rot += it.vrot + it.vx*0.005;
+
+    // walls bounce
+    if(it.x < it.size/2){ it.x = it.size/2; it.vx *= -0.7; }
+    if(it.x > W-it.size/2){ it.x = W-it.size/2; it.vx *= -0.7; }
+    // floor
+    if(it.y > floor){
+      it.y = floor;
+      if(Math.abs(it.vy) > 4){ it.vy *= -0.55; popSound(); }
+      else { it.vy = 0; it.vx *= 0.92; it.onFloor = true; }
+    }
+    // fell off after being thrown up? remove if way out of top for long: keep simple
+    if(it.y < -300) it.vy += 1;
+  }
+}
+
+function drawItems(t){
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  for(const it of items){
+    // spider web thread
+    if(it.type==='spider' && it.thread){
+      ctx.strokeStyle='rgba(255,255,255,.7)';
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(it.x, 0);
+      ctx.lineTo(it.x, it.y - it.size*0.4);
+      ctx.stroke();
+    }
+    ctx.save();
+    ctx.translate(it.x, it.y);
+    ctx.rotate(it.held!==null ? Math.sin(t/120)*0.15 : it.rot);
+    const bounce = it.held!==null ? 1.15 : 1;
+    ctx.font = `${it.size*bounce}px serif`;
+    // glow behind good items
+    if(it.good){
+      ctx.shadowColor='rgba(255,210,63,.8)';
+      ctx.shadowBlur=18;
+    } else {
+      ctx.shadowColor='rgba(138,92,255,.6)';
+      ctx.shadowBlur=12;
+    }
+    ctx.fillText(it.emo, 0, 0);
+    ctx.restore();
+  }
+}
+
+function drawHands(t){
+  for(const h of handsState){
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    if(h.pinch){
+      ctx.strokeStyle='#3ee6b0';
+      ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(0,0,26,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle='rgba(62,230,176,.25)';
+      ctx.beginPath(); ctx.arc(0,0,26,0,Math.PI*2); ctx.fill();
+    } else {
+      ctx.strokeStyle='rgba(255,246,233,.8)';
+      ctx.lineWidth=3;
+      const r = 30 + Math.sin(t/200)*4;
+      ctx.setLineDash([8,8]);
+      ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+}
+
+function drawMouthTarget(t){
+  if(!mouth) return;
+  const anyHeld = items.some(it=>it.held!==null);
+  if(!anyHeld) return;
+  ctx.save();
+  ctx.translate(mouth.x, mouth.y);
+  const r = 34 + Math.sin(t/150)*6;
+  ctx.strokeStyle='rgba(255,210,63,.9)';
+  ctx.lineWidth=4;
+  ctx.setLineDash([10,8]);
+  ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.font='22px serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('😋', 0, -r-18);
+  ctx.restore();
+}
+
+function drawMunch(t){
+  if(!munch) return;
+  const age = (t - munch.t0)/1000;
+  if(age > 0.6){ munch=null; return; }
+  ctx.save();
+  ctx.translate(munch.x, munch.y);
+  ctx.font = `${60 + age*40}px serif`;
+  ctx.globalAlpha = 1 - age/0.6;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(age%0.2<0.1 ? '😋' : '😮', 0, 0);
+  ctx.restore();
+}
+
+function drawBigMsg(t){
+  if(!bigMsg) return;
+  const age = (t - bigMsg.t0)/1000;
+  if(age > 1.1){ bigMsg=null; return; }
+  const scale = age<0.12 ? age/0.12 : 1;
+  const alpha = age>0.7 ? 1-(age-0.7)/0.4 : 1;
+  ctx.save();
+  ctx.translate(W/2, H*0.3);
+  ctx.rotate(-0.05);
+  ctx.scale(scale,scale);
+  ctx.globalAlpha = alpha;
+  ctx.font = `${Math.min(W,H)*0.14}px Bangers, cursive`;
+  ctx.textAlign='center';
+  ctx.lineWidth=12;
+  ctx.strokeStyle='#241238';
+  ctx.strokeText(bigMsg.text,0,0);
+  ctx.fillStyle=bigMsg.color;
+  ctx.fillText(bigMsg.text,0,0);
+  ctx.restore();
+}
+
+/* =====================  MAIN LOOP  ===================== */
+let lastT = 0;
+let spawnTimer = 0;
+function loop(t){
+  const dt = Math.min(t - lastT, 50);
+  lastT = t;
+  ctx.clearRect(0,0,W,H);
+
+  // spawn items over time, keep a nice amount on screen
+  spawnTimer -= dt;
+  if(spawnTimer <= 0 && items.length < 9){
+    spawnItem();
+    spawnTimer = rand(900, 2000);
+  }
+
+  updateItems(dt);
+
+  // particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.12; p.life-=0.03;
+    if(p.life<=0){ particles.splice(i,1); continue; }
+    ctx.globalAlpha=p.life;
+    ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=1;
+  }
+
+  drawItems(t);
+  drawMouthTarget(t);
+  drawHands(t);
+  drawMunch(t);
+  drawBigMsg(t);
+
+  requestAnimationFrame(loop);
+}
+
+/* =====================  START  ===================== */
+let frameFlip=false;
+startBtn.addEventListener('click', async ()=>{
+  startBtn.disabled=true;
+  loadMsg.textContent='Loading snacks...';
+  try{
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const camera = new Camera(video,{
+      onFrame: async ()=>{
+        frameFlip=!frameFlip;
+        if(frameFlip) await mpHands.send({image:video});
+        else await faceDet.send({image:video});
+      },
+      width:960, height:540
+    });
+    await camera.start();
+    startScreen.style.display='none';
+    stage.style.display='block';
+    resize();
+    requestAnimationFrame(loop);
+  }catch(err){
+    loadMsg.textContent='Camera could not start. Please allow camera access and try again.';
+    startBtn.disabled=false;
+    console.error(err);
+  }
+});
+</script>
+</body>
+</html>
