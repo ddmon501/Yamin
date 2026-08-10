@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AR GALAGA — Hand + Mouth Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cyan:#00f0ff;
+    --magenta:#ff2d95;
+    --yellow:#ffe94a;
+    --green:#39ff88;
+    --red:#ff4d4d;
+    --ink:#05060e;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--ink);font-family:'Press Start 2P',monospace;color:#fff}
+
+  #stage{position:fixed;inset:0}
+  video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);filter:brightness(.55) saturate(.8)}
+  #tint{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 30%, rgba(5,6,20,.15), rgba(5,6,20,.75));pointer-events:none}
+  canvas#game{position:absolute;inset:0;width:100%;height:100%}
+
+  /* CRT scanlines */
+  #crt{position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.22) 2px 4px);
+    mix-blend-mode:multiply;}
+  #vignette{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 180px rgba(0,0,0,.9)}
+
+  /* HUD */
+  #hud{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;padding:14px 18px;pointer-events:none;text-shadow:0 0 8px currentColor;z-index:5}
+  .hud-block{font-size:11px;line-height:1.9}
+  .hud-label{color:var(--red);font-size:8px}
+  #scoreVal{color:#fff}
+  #hiVal{color:var(--yellow)}
+  #livesRow{display:flex;gap:6px;margin-top:4px}
+  .lifeShip{width:14px;height:14px;background:var(--cyan);clip-path:polygon(50% 0,100% 100%,50% 75%,0 100%)}
+
+  /* Sensor panel */
+  #sensors{position:absolute;left:18px;bottom:16px;font-size:8px;line-height:2.1;color:#9adfe8;text-shadow:0 0 6px rgba(0,240,255,.6);z-index:5;pointer-events:none}
+  .sensor-on{color:var(--green)}
+  .sensor-off{color:#5a6a72}
+  #mouthMeterWrap{width:110px;height:8px;border:1px solid #2c4a52;margin-top:3px;background:rgba(0,0,0,.4)}
+  #mouthMeter{height:100%;width:0%;background:var(--magenta);box-shadow:0 0 8px var(--magenta)}
+
+  /* Overlays */
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;background:rgba(5,6,14,.82);z-index:10;text-align:center;padding:20px}
+  .overlay.hidden{display:none}
+  h1{font-size:clamp(22px,5vw,44px);color:var(--yellow);text-shadow:0 0 14px var(--yellow),3px 3px 0 var(--magenta);letter-spacing:2px}
+  .sub{font-size:clamp(8px,1.6vw,12px);color:var(--cyan);text-shadow:0 0 10px var(--cyan);line-height:2}
+  .howto{font-size:clamp(7px,1.4vw,10px);color:#cfd8dd;line-height:2.4;max-width:560px}
+  .howto b{color:var(--magenta)}
+  button{font-family:inherit;font-size:clamp(10px,2vw,14px);padding:16px 28px;background:transparent;color:var(--green);border:3px solid var(--green);cursor:pointer;text-shadow:0 0 8px var(--green);box-shadow:0 0 14px rgba(57,255,136,.35), inset 0 0 14px rgba(57,255,136,.15);transition:transform .1s}
+  button:hover{transform:scale(1.05)}
+  button:focus-visible{outline:3px solid var(--yellow);outline-offset:4px}
+  #status{font-size:8px;color:#8b98a0;min-height:14px}
+  .blink{animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+  #bigMsg{position:absolute;top:38%;left:0;right:0;text-align:center;font-size:clamp(14px,3.4vw,26px);color:var(--red);text-shadow:0 0 12px var(--red);pointer-events:none;z-index:6}
+  @media (prefers-reduced-motion: reduce){.blink{animation:none}}
+</style>
+</head>
+<body>
+<div id="stage">
+  <video id="cam" autoplay playsinline muted></video>
+  <div id="tint"></div>
+  <canvas id="game"></canvas>
+  <div id="crt"></div>
+  <div id="vignette"></div>
+
+  <div id="hud">
+    <div class="hud-block"><span class="hud-label">1UP</span><br><span id="scoreVal">0</span>
+      <div id="livesRow"></div>
+    </div>
+    <div class="hud-block" style="text-align:center"><span class="hud-label">HIGH SCORE</span><br><span id="hiVal">20000</span></div>
+    <div class="hud-block" style="text-align:right"><span class="hud-label">WAVE</span><br><span id="waveVal">1</span></div>
+  </div>
+
+  <div id="sensors">
+    <div>HAND&nbsp;&nbsp;<span id="sHand" class="sensor-off">SEARCHING</span></div>
+    <div>MOUTH&nbsp;<span id="sMouth" class="sensor-off">CLOSED</span></div>
+    <div id="mouthMeterWrap"><div id="mouthMeter"></div></div>
+  </div>
+
+  <div id="bigMsg"></div>
+
+  <div id="startOverlay" class="overlay">
+    <h1>AR GALAGA</h1>
+    <div class="sub">YOUR FACE IS THE COCKPIT</div>
+    <div class="howto">
+      MOVE YOUR <b>HAND</b> LEFT AND RIGHT TO STEER THE SHIP<br>
+      OPEN YOUR <b>MOUTH</b> TO FIRE<br><br>
+      BACKUP CONTROLS: ARROW KEYS + SPACE
+    </div>
+    <button id="startBtn">INSERT COIN ▸ START CAMERA</button>
+    <div id="status"></div>
+  </div>
+
+  <div id="overOverlay" class="overlay hidden">
+    <h1 style="color:var(--red);text-shadow:0 0 14px var(--red),3px 3px 0 #400">GAME OVER</h1>
+    <div class="sub">SCORE <span id="finalScore">0</span></div>
+    <button id="againBtn">PLAY AGAIN</button>
+  </div>
+</div>
+
+<script type="module">
+/* ================= AR GALAGA =================
+   Steering: hand x position (MediaPipe HandLandmarker)
+   Firing:   mouth open (MediaPipe FaceLandmarker blendshape jawOpen)
+   Fallback: arrow keys + space
+============================================== */
+
+const cam = document.getElementById('cam');
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const startOverlay = document.getElementById('startOverlay');
+const overOverlay = document.getElementById('overOverlay');
+const statusEl = document.getElementById('status');
+const sHand = document.getElementById('sHand');
+const sMouth = document.getElementById('sMouth');
+const mouthMeter = document.getElementById('mouthMeter');
+const bigMsg = document.getElementById('bigMsg');
+
+let W=0, H=0;
+function resize(){ W=canvas.width=innerWidth; H=canvas.height=innerHeight; }
+addEventListener('resize', resize); resize();
+
+/* ---------- Game state ---------- */
+const state = {
+  running:false, over:false,
+  score:0, hi:20000, lives:3, wave:1,
+  ship:{ x:0.5, targetX:0.5, w:44, h:34, cool:0, invuln:0 },
+  bullets:[], enemyBullets:[], enemies:[], particles:[], stars:[],
+  mouthOpen:false, mouthVal:0, handSeen:false,
+  keyLeft:false, keyRight:false, keySpace:false,
+  waveClearTimer:0
+};
+for(let i=0;i<70;i++) state.stars.push({x:Math.random(), y:Math.random(), s:Math.random()*1.6+0.4, v:Math.random()*0.0006+0.0002});
+
+const ENEMY_TYPES = [
+  {color:'#ff2d95', pts:150, r:14}, // boss row
+  {color:'#ff4d4d', pts:100, r:13},
+  {color:'#00f0ff', pts:80,  r:12},
+  {color:'#ffe94a', pts:50,  r:12},
+  {color:'#39ff88', pts:50,  r:12},
+];
+
+function spawnWave(n){
+  state.enemies.length = 0;
+  const rows = Math.min(3 + Math.floor(n/2), 5);
+  const cols = Math.min(6 + n, 10);
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      const t = ENEMY_TYPES[Math.min(r, ENEMY_TYPES.length-1)];
+      state.enemies.push({
+        gx:(c+0.5)/cols, gy:0.10 + r*0.065,
+        x:0, y:0, type:t, alive:true,
+        diving:false, dt:0, divePhase:Math.random()*Math.PI*2,
+        wob:Math.random()*Math.PI*2
+      });
+    }
+  }
+  showMsg('WAVE '+n, 1500);
+}
+function showMsg(t, ms){ bigMsg.textContent=t; clearTimeout(showMsg._t); showMsg._t=setTimeout(()=>bigMsg.textContent='', ms); }
+
+/* ---------- Input: keyboard fallback ---------- */
+addEventListener('keydown', e=>{
+  if(e.code==='ArrowLeft') state.keyLeft=true;
+  if(e.code==='ArrowRight') state.keyRight=true;
+  if(e.code==='Space'){ state.keySpace=true; e.preventDefault(); }
+});
+addEventListener('keyup', e=>{
+  if(e.code==='ArrowLeft') state.keyLeft=false;
+  if(e.code==='ArrowRight') state.keyRight=false;
+  if(e.code==='Space') state.keySpace=false;
+});
+
+/* ---------- MediaPipe setup ---------- */
+let handLandmarker=null, faceLandmarker=null, visionReady=false;
+
+async function setupVision(){
+  statusEl.textContent = 'LOADING VISION MODELS...';
+  const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14');
+  const { FilesetResolver, HandLandmarker, FaceLandmarker } = vision;
+  const fileset = await FilesetResolver.forVisionTasks(
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+  );
+  handLandmarker = await HandLandmarker.createFromOptions(fileset, {
+    baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate:'GPU' },
+    runningMode:'VIDEO', numHands:1
+  });
+  faceLandmarker = await FaceLandmarker.createFromOptions(fileset, {
+    baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', delegate:'GPU' },
+    runningMode:'VIDEO', numFaces:1, outputFaceBlendshapes:true
+  });
+  visionReady = true;
+}
+
+async function setupCamera(){
+  statusEl.textContent = 'REQUESTING CAMERA...';
+  const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user', width:{ideal:640}, height:{ideal:480} }, audio:false });
+  cam.srcObject = stream;
+  await new Promise(res=> cam.onloadedmetadata = res);
+  await cam.play();
+}
+
+/* ---------- Gesture detection loop ---------- */
+let lastVideoTime=-1;
+const MOUTH_FIRE = 0.42;   // open threshold
+const MOUTH_RELEASE = 0.28; // close threshold (hysteresis)
+
+function detect(){
+  if(visionReady && cam.readyState>=2 && cam.currentTime!==lastVideoTime){
+    lastVideoTime = cam.currentTime;
+    const now = performance.now();
+    try{
+      const hr = handLandmarker.detectForVideo(cam, now);
+      if(hr.landmarks && hr.landmarks.length){
+        // landmark 9 = middle finger base, stable point. Mirror x because video is mirrored.
+        const x = 1 - hr.landmarks[0][9].x;
+        state.ship.targetX = Math.min(0.97, Math.max(0.03, x));
+        state.handSeen = true;
+      } else state.handSeen = false;
+
+      const fr = faceLandmarker.detectForVideo(cam, now+0.01);
+      let jaw = 0;
+      if(fr.faceBlendshapes && fr.faceBlendshapes.length){
+        const cat = fr.faceBlendshapes[0].categories.find(c=>c.categoryName==='jawOpen');
+        if(cat) jaw = cat.score;
+      }
+      state.mouthVal = jaw;
+      if(!state.mouthOpen && jaw > MOUTH_FIRE) state.mouthOpen = true;
+      else if(state.mouthOpen && jaw < MOUTH_RELEASE) state.mouthOpen = false;
+    }catch(e){ /* skip frame */ }
+  }
+  // sensor HUD
+  sHand.textContent = state.handSeen ? 'LOCKED' : 'SEARCHING';
+  sHand.className = state.handSeen ? 'sensor-on' : 'sensor-off';
+  sMouth.textContent = state.mouthOpen ? 'FIRE!' : 'CLOSED';
+  sMouth.className = state.mouthOpen ? 'sensor-on' : 'sensor-off';
+  mouthMeter.style.width = Math.min(100, state.mouthVal*140) + '%';
+  requestAnimationFrame(detect);
+}
+
+/* ---------- Game logic ---------- */
+function fire(){
+  const s = state.ship;
+  if(s.cool>0) return;
+  s.cool = 11; // frames between shots while mouth held open
+  state.bullets.push({ x:s.x*W, y:H-90, vy:-13 });
+  boom(s.x*W, H-92, '#00f0ff', 3, 1.2);
+}
+function boom(x,y,color,n,spd){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2, v=(Math.random()*2+1)*spd;
+    state.particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:26+Math.random()*14,color});
+  }
+}
+
+function update(){
+  if(!state.running || state.over) return;
+  const s = state.ship;
+
+  // steer: keyboard nudges target, hand sets it directly
+  if(state.keyLeft) s.targetX -= 0.018;
+  if(state.keyRight) s.targetX += 0.018;
+  s.targetX = Math.min(0.97, Math.max(0.03, s.targetX));
+  s.x += (s.targetX - s.x) * 0.22; // smoothing
+
+  if(s.cool>0) s.cool--;
+  if(s.invuln>0) s.invuln--;
+  if(state.mouthOpen || state.keySpace) fire();
+
+  // bullets
+  state.bullets = state.bullets.filter(b=>{ b.y+=b.vy; return b.y>-20; });
+  state.enemyBullets = state.enemyBullets.filter(b=>{ b.y+=b.vy; b.x+=b.vx||0; return b.y<H+20; });
+
+  // formation drift
+  const t = performance.now()/1000;
+  const drift = Math.sin(t*0.7)*0.05;
+
+  let aliveCount = 0;
+  for(const e of state.enemies){
+    if(!e.alive) continue;
+    aliveCount++;
+    e.wob += 0.08;
+    if(!e.diving){
+      e.x = (e.gx + drift) * W;
+      e.y = e.gy * H + Math.sin(e.wob)*4;
+      // random chance to dive
+      if(Math.random() < 0.0007 + state.wave*0.00025){
+        e.diving = true; e.dt = 0;
+        e.sx = e.x; e.sy = e.y;
+      }
+      // occasional shot from formation
+      if(Math.random() < 0.0012 + state.wave*0.0002){
+        state.enemyBullets.push({x:e.x, y:e.y+10, vy:4.2+state.wave*0.25});
+      }
+    } else {
+      e.dt += 0.011 + state.wave*0.0012;
+      const p = e.dt;
+      // swooping dive path toward player then off bottom
+      e.x = e.sx + Math.sin(p*4 + e.divePhase) * W*0.18 + (s.x*W - e.sx)*p*0.55;
+      e.y = e.sy + p*p * H*0.95;
+      if(Math.random()<0.02) state.enemyBullets.push({x:e.x, y:e.y+10, vy:5, vx:(s.x*W-e.x)*0.006});
+      if(e.y > H+30){ e.diving=false; e.dt=0; } // rejoin formation at top
+    }
+  }
+
+  // bullet vs enemy
+  for(const b of state.bullets){
+    for(const e of state.enemies){
+      if(!e.alive) continue;
+      const dx=b.x-e.x, dy=b.y-e.y;
+      if(dx*dx+dy*dy < (e.type.r+5)*(e.type.r+5)){
+        e.alive=false; b.y=-99;
+        state.score += e.type.pts * (e.diving?2:1);
+        boom(e.x,e.y,e.type.color,16,2.2);
+        if(state.score>state.hi) state.hi=state.score;
+      }
+    }
+  }
+
+  // enemy bullets / dive collisions vs ship
+  const shipY = H-70;
+  if(s.invuln<=0){
+    let hit=false;
+    for(const b of state.enemyBullets){
+      if(Math.abs(b.x - s.x*W)<20 && Math.abs(b.y-shipY)<18){ hit=true; b.y=H+99; break; }
+    }
+    if(!hit) for(const e of state.enemies){
+      if(e.alive && e.diving && Math.abs(e.x-s.x*W)<22 && Math.abs(e.y-shipY)<20){ hit=true; e.alive=false; boom(e.x,e.y,e.type.color,14,2); break; }
+    }
+    if(hit){
+      state.lives--;
+      boom(s.x*W, shipY, '#ffffff', 30, 3);
+      s.invuln = 120;
+      if(state.lives<=0){ gameOver(); return; }
+      showMsg('SHIP DESTROYED', 1200);
+    }
+  }
+
+  // wave clear
+  if(aliveCount===0){
+    state.waveClearTimer++;
+    if(state.waveClearTimer>90){
+      state.waveClearTimer=0;
+      state.wave++;
+      spawnWave(state.wave);
+    }
+  }
+
+  // particles + stars
+  state.particles = state.particles.filter(p=>{ p.x+=p.vx; p.y+=p.vy; p.life--; return p.life>0; });
+  for(const st of state.stars){ st.y += st.v* (1+state.wave*0.1) * 60; if(st.y>1) {st.y=0; st.x=Math.random();} }
+
+  // HUD
+  document.getElementById('scoreVal').textContent = state.score;
+  document.getElementById('hiVal').textContent = state.hi;
+  document.getElementById('waveVal').textContent = state.wave;
+  const lr = document.getElementById('livesRow');
+  if(lr.children.length !== Math.max(0,state.lives-1)){
+    lr.innerHTML='';
+    for(let i=0;i<state.lives-1;i++){ const d=document.createElement('div'); d.className='lifeShip'; lr.appendChild(d); }
+  }
+}
+
+/* ---------- Render ---------- */
+function drawShip(x,y){
+  const s=state.ship;
+  if(s.invuln>0 && Math.floor(s.invuln/6)%2===0) return; // flicker
+  ctx.save(); ctx.translate(x,y);
+  ctx.shadowColor='#00f0ff'; ctx.shadowBlur=18;
+  ctx.fillStyle='#00f0ff';
+  ctx.beginPath();
+  ctx.moveTo(0,-20); ctx.lineTo(16,14); ctx.lineTo(6,8); ctx.lineTo(0,16); ctx.lineTo(-6,8); ctx.lineTo(-16,14);
+  ctx.closePath(); ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.fillStyle='#fff'; ctx.fillRect(-2,-14,4,10);
+  // thruster
+  ctx.fillStyle = Math.random()<.5?'#ffe94a':'#ff2d95';
+  ctx.beginPath(); ctx.moveTo(-4,16); ctx.lineTo(4,16); ctx.lineTo(0,26+Math.random()*6); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function drawEnemy(e){
+  ctx.save(); ctx.translate(e.x,e.y);
+  ctx.shadowColor=e.type.color; ctx.shadowBlur=14;
+  ctx.fillStyle=e.type.color;
+  const r=e.type.r;
+  // bug body
+  ctx.beginPath(); ctx.ellipse(0,0,r*0.7,r*0.9,0,0,Math.PI*2); ctx.fill();
+  // wings flap
+  const f = Math.sin(e.wob*2)*0.3+0.9;
+  ctx.beginPath(); ctx.ellipse(-r*0.9,0,r*0.55*f,r*0.4,0.5,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(r*0.9,0,r*0.55*f,r*0.4,-0.5,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.fillStyle='#05060e';
+  ctx.fillRect(-r*0.35,-r*0.3,r*0.25,r*0.25);
+  ctx.fillRect(r*0.1,-r*0.3,r*0.25,r*0.25);
+  ctx.restore();
+}
+function render(){
+  ctx.clearRect(0,0,W,H);
+  // stars
+  for(const st of state.stars){
+    ctx.fillStyle='rgba(255,255,255,'+(0.3+st.s*0.3)+')';
+    ctx.fillRect(st.x*W, st.y*H, st.s, st.s*2.5);
+  }
+  if(state.running && !state.over){
+    for(const e of state.enemies) if(e.alive) drawEnemy(e);
+    ctx.fillStyle='#39ff88'; ctx.shadowColor='#39ff88'; ctx.shadowBlur=10;
+    for(const b of state.bullets) ctx.fillRect(b.x-2,b.y-8,4,12);
+    ctx.fillStyle='#ff4d4d'; ctx.shadowColor='#ff4d4d';
+    for(const b of state.enemyBullets) ctx.fillRect(b.x-2,b.y,4,10);
+    ctx.shadowBlur=0;
+    drawShip(state.ship.x*W, H-70);
+  }
+  for(const p of state.particles){
+    ctx.globalAlpha = Math.max(0,p.life/30);
+    ctx.fillStyle=p.color;
+    ctx.fillRect(p.x,p.y,3,3);
+    ctx.globalAlpha=1;
+  }
+}
+function loop(){ update(); render(); requestAnimationFrame(loop); }
+loop();
+
+/* ---------- Flow ---------- */
+function gameOver(){
+  state.over=true;
+  document.getElementById('finalScore').textContent = state.score;
+  overOverlay.classList.remove('hidden');
+}
+function resetGame(){
+  state.score=0; state.lives=3; state.wave=1; state.over=false;
+  state.bullets=[]; state.enemyBullets=[]; state.particles=[];
+  state.ship.x=0.5; state.ship.targetX=0.5; state.ship.invuln=90;
+  spawnWave(1);
+  state.running=true;
+}
+
+document.getElementById('startBtn').addEventListener('click', async ()=>{
+  try{
+    await setupCamera();
+    startOverlay.classList.add('hidden');
+    resetGame();
+    setupVision().then(()=>{ statusEl.textContent=''; detect(); })
+      .catch(()=> showMsg('VISION FAILED. USE KEYBOARD.', 2500));
+  }catch(err){
+    statusEl.innerHTML = 'CAMERA BLOCKED.<br>YOU CAN STILL PLAY WITH KEYBOARD.';
+    setTimeout(()=>{ startOverlay.classList.add('hidden'); resetGame(); showMsg('KEYBOARD MODE', 2000); }, 1600);
+  }
+});
+document.getElementById('againBtn').addEventListener('click', ()=>{
+  overOverlay.classList.add('hidden');
+  resetGame();
+});
+</script>
+</body>
+</html>
